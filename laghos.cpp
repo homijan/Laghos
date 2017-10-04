@@ -46,6 +46,7 @@
 
 
 #include "laghos_solver.hpp"
+#include "pnonlocaloperator.hpp"
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -173,7 +174,13 @@ int main(int argc, char *argv[])
    H1_FECollection H1FEC(order_v, dim);
    ParFiniteElementSpace L2FESpace(pmesh, &L2FEC);
    ParFiniteElementSpace H1FESpace(pmesh, &H1FEC, pmesh->Dimension());
-
+   // Create the operator for nonlocal calculation.
+   int Aorder_phi = 2;
+   int Aorder_theta = 2;
+   int Iorder = order_e + 1;
+   int Torder = order_e;
+   nth::ParNonlocalOperator operNonlocal(pmesh, &L2FESpace, Iorder, Torder,
+      Aorder_phi, Aorder_theta); 
    // Boundary conditions: all tests use v.n = 0 on the boundary, and we assume
    // that the boundaries are straight.
    Array<int> ess_tdofs;
@@ -585,11 +592,12 @@ double e0(const Vector &x)
 
 void display_banner(ostream & os)
 {
-   os << endl
-      << "       __                __                 " << endl
-      << "      / /   ____  ____  / /_  ____  _____   " << endl
-      << "     / /   / __ `/ __ `/ __ \\/ __ \\/ ___/ " << endl
-      << "    / /___/ /_/ / /_/ / / / / /_/ (__  )    " << endl
-      << "   /_____/\\__,_/\\__, /_/ /_/\\____/____/  " << endl
-      << "               /____/                       " << endl << endl;
+os << endl
+<< "    __   __ _______ __   __    __                __                "<< endl
+<< "   /    / //__  __// /  / /   / /   ____  ____  / /_  ____  _____  "<< endl
+<< "  / /| / /   / /  / /__/ /   / /   / __ `/ __ `/ __ \\/ __ \\/ ___/"<< endl
+<< " / / |  /   / /  / ___  /   / /___/ /_/ / /_/ / / / / /_/ (__  )   "<< endl
+<< "/_/  |_/   /_/  /_/  /_/   /_____/\\__,_/\\__, /_/ /_/\\____/____/ "<< endl
+<< "                                       /____/                      "<< endl
+<< endl;
 }
