@@ -221,15 +221,15 @@ The latter produces the following specific internal energy plot (when run with `
 To make sure the results are correct, we tabulate reference final iterations
 (`step`), time steps (`dt`) and energies (`|e|`) for the nine runs listed above:
 
-1. `mpirun -np 8 laghos -p 0 -m data/square01_quad.mesh -rs 3 -tf 0.5 -no-vis -pa`
-2. `mpirun -np 8 laghos -p 0 -m data/cube01_hex.mesh -rs 1 -cfl 0.1 -tf 0.25 -no-vis -pa`
-3. `mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 3 -tf 0.8 -no-vis -pa`
-4. `mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh -rs 2 -tf 0.6 -no-vis -pa`
-5. `mpirun -np 8 laghos -p 2 -m data/square01_quad.mesh -rs 3 -tf 0.2 -no-vis -pa`
-6. `mpirun -np 8 laghos -p 2 -m data/cube01_hex.mesh -rs 2 -tf 0.2 -no-vis -pa`
-7. `mpirun -np 8 laghos -p 3 -m data/rectangle01_quad.mesh -rs 2 -tf 2.5 -cfl 0.025 -no-vis -pa`
-8. `mpirun -np 8 laghos -p 3 -m data/box01_hex.mesh -rs 1 -tf 2.5 -cfl 0.05 -no-vis -pa`
-9. `mpirun -np 8 laghos -p 2 -m data/segment01.mesh -rs 5 -tf 0.2 -no-vis -fa`
+1. `mpirun -np 8 laghos -p 0 -m data/square01_quad.mesh -rs 3 -tf 0.5 -no-vis -pa -vs 50`
+2. `mpirun -np 8 laghos -p 0 -m data/cube01_hex.mesh -rs 1 -cfl 0.1 -tf 0.25 -no-vis -pa -vs 50`
+3. `mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 3 -tf 0.8 -no-vis -pa -vs 50`
+4. `mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh -rs 2 -tf 0.6 -no-vis -pa -vs 50`
+5. `mpirun -np 8 laghos -p 2 -m data/square01_quad.mesh -rs 3 -tf 0.2 -no-vis -pa -vs 50`
+6. `mpirun -np 8 laghos -p 2 -m data/cube01_hex.mesh -rs 2 -tf 0.2 -no-vis -pa -vs 50`
+7. `mpirun -np 8 laghos -p 3 -m data/rectangle01_quad.mesh -rs 2 -tf 2.5 -cfl 0.025 -no-vis -pa -vs 50`
+8. `mpirun -np 8 laghos -p 3 -m data/box01_hex.mesh -rs 1 -tf 2.5 -cfl 0.05 -no-vis -pa -vs 50`
+9. `mpirun -np 8 laghos -p 2 -m data/segment01.mesh -rs 5 -tf 0.2 -no-vis -fa -vs 50`
 
 | run | `step` | `dt` | `e` |
 | --- | ------ | ---- | --- |

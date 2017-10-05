@@ -3,6 +3,7 @@
 
 #include "mfem.hpp"
 #include "nonlocalinteg.hpp"
+#include "ic.hpp"
 
 #ifdef MFEM_USE_MPI
 
@@ -298,7 +299,8 @@ public:
          //}
          // DG Finite element space (same order as hydro velocity).
          // DG_FECollection is typedefed L2_FECollection
-		 int basis_type = BasisType::GaussLegendre;
+		 int basis_type = BasisType::Positive;
+		 //int basis_type = BasisType::GaussLegendre;
 		 //int basis_type = BasisType::GaussLobatto;
 		 Xfec = new DG_FECollection(_order_I_x, dim, basis_type);
          pI_fes = new ParFiniteElementSpace(pmesh, Xfec, ndof_afes);
