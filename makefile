@@ -105,7 +105,7 @@ LIBS = $(strip $(LAGHOS_LIBS) $(LDFLAGS))
 CCC  = $(strip $(CXX) $(LAGHOS_FLAGS))
 Ccc  = $(strip $(CC) $(CFLAGS) $(GL_OPTS))
 
-SOURCE_FILES = laghos.cpp laghos_solver.cpp laghos_assembly.cpp nth_integ.cpp nth_coeffs.cpp
+SOURCE_FILES = laghos.cpp laghos_solver.cpp laghos_assembly.cpp nth_solver.cpp nth_integ.cpp nth_coeffs.cpp
 OBJECT_FILES1 = $(SOURCE_FILES:.cpp=.o)
 OBJECT_FILES = $(OBJECT_FILES1:.c=.o)
 HEADER_FILES = laghos_solver.hpp laghos_assembly.hpp nth_solver.hpp nth_integ.hpp nth_coeffs.hpp

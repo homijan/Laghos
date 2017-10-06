@@ -327,7 +327,8 @@ int main(int argc, char *argv[])
 
    nth::KAPPA = 0.4285;
    nth::SIGMA = 2.0*nth::KAPPA;
-   nth::EFIELD = 0.75*nth::KAPPA;
+   nth::EFIELD = 0.0;
+   //nth::EFIELD = 0.75*nth::KAPPA;
 
    nth::ParNonlocalOperator operNonlocal(pmesh, &L2FESpace, Iorder, Torder,
       Aorder_phi, Aorder_theta);
@@ -400,16 +401,11 @@ int main(int argc, char *argv[])
       VisualizeField(vis_v, vishost, visport, v_gf,
                      "Velocity", Wx, Wy, Ww, Wh);
       Wx += offx;
-<<<<<<< HEAD
-      miniapps::VisualizeField(vis_e, vishost, visport, e_gf,
-                               "Specific Internal Energy", Wx, Wy, Ww,Wh);\
-      Wx += offx;
-	  miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
-	                           I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
-=======
       VisualizeField(vis_e, vishost, visport, e_gf,
-                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
->>>>>>> 9b13adb62fcb207f9257a47fbae6b5b48b082ed0
+                               "Specific Internal Energy", Wx, Wy, Ww,Wh);
+      Wx += offx;
+	  VisualizeField(vis_I1Magnitude, vishost, visport, 
+	                           I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
    }
 
    // Save data for VisIt visualization
@@ -484,11 +480,11 @@ int main(int argc, char *argv[])
          double dUmax_NL = 1e-32;
          operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
             source_NL);
-         if (mpi.Root())
-         {
-            cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
-	           << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
-         }
+         //if (mpi.Root())
+         //{
+         //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
+	     //      << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
+         //}
 		 I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
 		 //////////////////////////////////////
          // NONLOCAL CALCULATION SECTION END //
@@ -509,8 +505,8 @@ int main(int argc, char *argv[])
             VisualizeField(vis_e, vishost, visport, e_gf,
                            "Specific Internal Energy", Wx, Wy, Ww,Wh);
             Wx += offx;
-			miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
-			                         I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
+			VisualizeField(vis_I1Magnitude, vishost, visport, I1Magnitude_gf, 
+			               "|q|", Wx, Wy, Ww, Wh);
          }
 
          if (visit)
