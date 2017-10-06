@@ -260,8 +260,8 @@ int main(int argc, char *argv[])
    // Create the operator for nonlocal calculation.
    //L2_FECollection T_fe_coll(order_e, dim);
    //ParFiniteElementSpace pT_fespace(pmesh, &T_fe_coll);
-   int Aorder_phi = 2;
-   int Aorder_theta = 2;
+   int Aorder_phi = 1;
+   int Aorder_theta = 1;
    int Iorder = order_e + 1;
    int Torder = order_e;
    double tol_NL = 1e-7;
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
    ParGridFunction &u = *(operNonlocal.GetIntensityGridFunction());
    // Define spatial dependent transport quantities (direction integrated).
    ParFiniteElementSpace I_fespace(pmesh, operNonlocal.GetXfec());
-   ParGridFunction I0_gf(&I_fespace), I1z_gf(&I_fespace), I1x_gf(&I_fespace);
+   ParGridFunction I1Magnitude_gf(&I_fespace);
    // Transport coefficients.
    VectorFunctionCoefficient Efield(dim, nth::Efield_function);
    FunctionCoefficient kappa(nth::kappa_function);
@@ -289,9 +289,11 @@ int main(int argc, char *argv[])
       sourceCoeffT, sourceT, &Efield);
    // NonlocalOperator operNonlocal does internally the evaluation of
    // intensity and its moments can be obtained by the following coefficients.
-   Coefficient &I0_nonlocal = *(operNonlocal.GetZeroMomentCoefficient());
-   Coefficient &I1z_nonlocal = *(operNonlocal.GetFirstMomentZCoefficient());
-   Coefficient &I1x_nonlocal = *(operNonlocal.GetFirstMomentXCoefficient());
+   //Coefficient &I0_nonlocal = *(operNonlocal.GetZeroMomentCoefficient());
+   Coefficient &I1Magnitude_nonlocal = 
+      *(operNonlocal.GetFirstMomentMagnitudeCoefficient());
+   //Coefficient &I1z_nonlocal = *(operNonlocal.GetFirstMomentZCoefficient());
+   //Coefficient &I1x_nonlocal = *(operNonlocal.GetFirstMomentXCoefficient());
    //VectorCoefficient &I1_nonlocal = *(operNonlocal.GetFirstMomentCoefficient());
 
    int nti_NL;
@@ -305,9 +307,7 @@ int main(int argc, char *argv[])
       cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
 	     << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
    }
-   I0_gf.ProjectCoefficient(I0_nonlocal);
-   I1z_gf.ProjectCoefficient(I1z_nonlocal);
-   I1x_gf.ProjectCoefficient(I1x_nonlocal);
+   I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
    /////////////////////////////////////
    // NONLOCAL CALCULATION SECTION /////
    /////////////////////////////////////
@@ -361,7 +361,7 @@ int main(int argc, char *argv[])
                                 ess_tdofs, rho, source, cfl, material_pcf,
                                 visc, p_assembly);
 
-   socketstream vis_rho, vis_v, vis_e, vis_I0, vis_I1z, vis_I1x;
+   socketstream vis_rho, vis_v, vis_e, vis_I0, vis_I1Magnitude;
    char vishost[] = "localhost";
    int  visport   = 19916;
 
@@ -378,27 +378,23 @@ int main(int argc, char *argv[])
       vis_v.precision(8);
       vis_e.precision(8);
       vis_I0.precision(8);
-      vis_I1z.precision(8);
-      vis_I1x.precision(8);
+      vis_I1Magnitude.precision(8);
 
       int Wx = 0, Wy = 0; // window position
       const int Ww = 350, Wh = 350; // window size
-      int offx = Ww+10, offy = Wh+10; // window offsets
+      int offx = Ww+10; // window offsets
 
       miniapps::VisualizeField(vis_rho, vishost, visport, rho_gf,
                                "Density", Wx, Wy, Ww, Wh);
-      miniapps::VisualizeField(vis_I0, vishost, visport, I0_gf,
-                               "I0", Wx, Wy+offy, Ww, Wh);
       Wx += offx;
       miniapps::VisualizeField(vis_v, vishost, visport, v_gf,
                                "Velocity", Wx, Wy, Ww, Wh);
-      miniapps::VisualizeField(vis_I1z, vishost, visport, I1z_gf,
-                               "I1z", Wx, Wy+offy, Ww, Wh);
       Wx += offx;
       miniapps::VisualizeField(vis_e, vishost, visport, e_gf,
-                               "Specific Internal Energy", Wx, Wy, Ww,Wh);
-      miniapps::VisualizeField(vis_I1x, vishost, visport, I1x_gf,
-                               "I1x", Wx, Wy+offy, Ww, Wh);
+                               "Specific Internal Energy", Wx, Wy, Ww,Wh);\
+      Wx += offx;
+	  miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
+	                           I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
    }
 
    // Save data for VisIt visualization
@@ -514,9 +510,7 @@ int main(int argc, char *argv[])
             cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
 	           << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
          }
-		 I0_gf.ProjectCoefficient(I0_nonlocal);
-		 I1z_gf.ProjectCoefficient(I1z_nonlocal);
-         I1x_gf.ProjectCoefficient(I1x_nonlocal);
+		 I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
 		 //////////////////////////////////////
          // NONLOCAL CALCULATION SECTION END //
          //////////////////////////////////////
@@ -526,22 +520,19 @@ int main(int argc, char *argv[])
          {
             int Wx = 0, Wy = 0; // window position
             int Ww = 350, Wh = 350; // window size
-            int offx = Ww+10, offy = Wh+10; // window offsets
+            int offx = Ww+10; // window offsets
 
             miniapps::VisualizeField(vis_rho, vishost, visport, rho_gf,
                                      "Density", Wx, Wy, Ww, Wh);
-            miniapps::VisualizeField(vis_I0, vishost, visport, I0_gf,
-                                     "I0", Wx, Wy+offy, Ww, Wh);
             Wx += offx;
             miniapps::VisualizeField(vis_v, vishost, visport,
                                      v_gf, "Velocity", Wx, Wy, Ww, Wh);
-            miniapps::VisualizeField(vis_I1z, vishost, visport, I1z_gf,
-                                     "I1z", Wx, Wy+offy, Ww, Wh);
             Wx += offx;
             miniapps::VisualizeField(vis_e, vishost, visport, e_gf,
                                      "Specific Internal Energy", Wx, Wy, Ww,Wh);
-            miniapps::VisualizeField(vis_I1x, vishost, visport, I1x_gf,
-                                     "I1x", Wx, Wy+offy, Ww, Wh);
+            Wx += offx;
+			miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
+			                         I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
          }
 
          if (visit)

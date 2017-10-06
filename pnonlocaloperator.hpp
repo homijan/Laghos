@@ -159,7 +159,7 @@ protected:
       public MatrixCoefficient
    {
    protected:
-      int vdim;
+      int dim, vdim;
 	  AngularFiniteElementSpace *Afes;
 	  ParGridFunction *pI;
       int component; // TMP switch: 0=I0, 1=I1z, 2=I1x
@@ -168,7 +168,8 @@ protected:
 	     ParGridFunction *_pI) : VectorCoefficient(_vdim), 
 		 MatrixCoefficient(_vdim), pI(_pI), Afes(_Afes) 
 	  { 
-	     vdim = _vdim;
+	     dim = pI->FESpace()->GetMesh()->Dimension();
+		 vdim = _vdim;
 		 component = 0; 
 	  } 
       void SetComponent(const int _component) { component = _component; }
@@ -214,6 +215,29 @@ protected:
          if (component==2)
 		 {
 		    return afes_xcomponent*Ix;
+		 }
+         if (component==3)
+		 {
+		    return afes_ycomponent*Ix;
+		 }
+         if (component==-1)
+		 {
+			if (dim == 1) 
+			{
+			   return sqrt((afes_zcomponent*Ix) * (afes_zcomponent*Ix));
+			}
+			else if (dim == 2)
+			{
+			   return sqrt((afes_zcomponent*Ix) * (afes_zcomponent*Ix) + 
+			   (afes_xcomponent*Ix) * (afes_xcomponent*Ix));
+			}
+			else if (dim == 3)
+			{
+			   return sqrt((afes_zcomponent*Ix) * (afes_zcomponent*Ix) + 
+			   (afes_xcomponent*Ix) * (afes_xcomponent*Ix) +
+			   (afes_ycomponent*Ix) * (afes_ycomponent*Ix));
+			} 
+			else { MFEM_ABORT("Unsupported mesh dimension"); }  
 		 }
 	  }
       virtual void Eval(Vector &flux, ElementTransformation &T,
@@ -270,7 +294,8 @@ protected:
    ParGridFunction *pI_pgf;
    MomentsCoefficient *pMoments_pcf;
    // TMP components.
-   MomentsCoefficient *pZeroMoment_pcf, *pFirstMomentz_pcf, *pFirstMomentx_pcf;
+   MomentsCoefficient *pZeroMoment_pcf, *pFirstMomentz_pcf, *pFirstMomentx_pcf,
+      *pFirstMomenty_pcf, *pFirstMomentMagnitude_pcf;
 
 public:
    ParNonlocalOperator(ParMesh *_pmesh, ParFiniteElementSpace *_pT_fes, 
@@ -313,6 +338,9 @@ public:
    // TMP coefficients.
    Coefficient* GetFirstMomentZCoefficient() { return pFirstMomentz_pcf; }
    Coefficient* GetFirstMomentXCoefficient() { return pFirstMomentx_pcf; }
+   Coefficient* GetFirstMomentYCoefficient() { return pFirstMomenty_pcf; }
+   Coefficient* GetFirstMomentMagnitudeCoefficient() 
+      { return pFirstMomentMagnitude_pcf; }
    VectorCoefficient* GetFirstMomentCoefficient() { return pMoments_pcf; }
 
    ParGridFunction* GetIntensityGridFunction()
@@ -329,6 +357,10 @@ public:
          pFirstMomentz_pcf->SetComponent(1);
          pFirstMomentx_pcf = new MomentsCoefficient(dim, Afes, pI_pgf);
          pFirstMomentx_pcf->SetComponent(2);
+         pFirstMomenty_pcf = new MomentsCoefficient(dim, Afes, pI_pgf);
+         pFirstMomenty_pcf->SetComponent(3);
+	     pFirstMomentMagnitude_pcf = new MomentsCoefficient(dim, Afes, pI_pgf);
+         pFirstMomentMagnitude_pcf->SetComponent(-1);	 
 	  }
 	  return pI_pgf;
    }
@@ -527,10 +559,11 @@ public:
 	  delete pTM;
 	  delete pTb;
 	  delete pMoments_pcf;
-      // TMP components.
-      delete pZeroMoment_pcf; 
+      delete pZeroMoment_pcf;
 	  delete pFirstMomentz_pcf;
-	  delete pFirstMomentx_pcf;  
+	  delete pFirstMomentx_pcf;
+	  delete pFirstMomenty_pcf;
+      delete pFirstMomentMagnitude_pcf;
    }
 };
 
