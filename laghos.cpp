@@ -34,10 +34,11 @@
 //    Computing, (34) 2012, pp.B606–B641, https://doi.org/10.1137/120864672.
 //
 // Sample runs:
-//    mpirun -np 8 laghos -p 0 -m data/square01_quad.mesh -rs 3 -tf 0.5
-//    mpirun -np 8 laghos -p 0 -m data/square01_tri.mesh  -rs 1 -tf 0.5
-//    mpirun -np 8 laghos -p 0 -m data/cube01_hex.mesh    -rs 1 -cfl 0.1 -tf 0.5
+//    mpirun -np 8 laghos -p 0 -m data/square01_quad.mesh -rs 3 -tf 0.75
+//    mpirun -np 8 laghos -p 0 -m data/square01_tri.mesh  -rs 1 -tf 0.75
+//    mpirun -np 8 laghos -p 0 -m data/cube01_hex.mesh    -rs 1 -tf 2.0
 //    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 3 -tf 0.8
+//    mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 0 -tf 0.8 -ok 7 -ot 6
 //    mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh    -rs 2 -tf 0.6
 //
 // Test problems:
@@ -77,13 +78,13 @@ int main(int argc, char *argv[])
    int order_e = 1;
    int ode_solver_type = 4;
    double t_final = 0.5;
-   double cfl = 0.1;
+   double cfl = 0.5;
    bool p_assembly = true;
    bool visualization = false;
-   bool visit = false;
    int vis_steps = 5;
-   int gfprint = 0;
-   const char *basename = "Laghos";
+   bool visit = false;
+   bool gfprint = false;
+   const char *basename = "results/Laghos";
 
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
@@ -93,10 +94,10 @@ int main(int argc, char *argv[])
    args.AddOption(&rp_levels, "-rp", "--refine-parallel",
                   "Number of times to refine the mesh uniformly in parallel.");
    args.AddOption(&problem, "-p", "--problem", "Problem setup to use.");
+   args.AddOption(&order_v, "-ok", "--order-kinematic",
+                  "Order (degree) of the kinematic finite element space.");
    args.AddOption(&order_e, "-ot", "--order-thermo",
                   "Order (degree) of the thermodynamic finite element space.");
-   args.AddOption(&order_v, "-ov", "--order-kinematic",
-                  "Order (degree) of the kinematic finite element space.");
    args.AddOption(&ode_solver_type, "-s", "--ode-solver",
                   "ODE solver: 1 - Forward Euler,\n\t"
                   "            2 - RK2 SSP, 3 - RK3 SSP, 4 - RK4, 6 - RK6.");
@@ -109,10 +110,12 @@ int main(int argc, char *argv[])
    args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
                   "--no-visualization",
                   "Enable or disable GLVis visualization.");
-   args.AddOption(&visit, "-visit", "--visit", "-no-visit", "--no-visit",
-                  "Enable or disable VisIt visualization.");
    args.AddOption(&vis_steps, "-vs", "--visualization-steps",
                   "Visualize every n-th timestep.");
+   args.AddOption(&visit, "-visit", "--visit", "-no-visit", "--no-visit",
+                  "Enable or disable VisIt visualization.");
+   args.AddOption(&gfprint, "-print", "--print", "-no-print", "--no-print",
+                  "Enable or disable result output (files in mfem format).");
    args.AddOption(&basename, "-k", "--outputfilename",
                   "Name of the visit dump files");
    args.Parse();
@@ -391,17 +394,22 @@ int main(int argc, char *argv[])
       const int Ww = 350, Wh = 350; // window size
       int offx = Ww+10; // window offsets
 
-      miniapps::VisualizeField(vis_rho, vishost, visport, rho_gf,
-                               "Density", Wx, Wy, Ww, Wh);
+      VisualizeField(vis_rho, vishost, visport, rho_gf,
+                     "Density", Wx, Wy, Ww, Wh);
       Wx += offx;
-      miniapps::VisualizeField(vis_v, vishost, visport, v_gf,
-                               "Velocity", Wx, Wy, Ww, Wh);
+      VisualizeField(vis_v, vishost, visport, v_gf,
+                     "Velocity", Wx, Wy, Ww, Wh);
       Wx += offx;
+<<<<<<< HEAD
       miniapps::VisualizeField(vis_e, vishost, visport, e_gf,
                                "Specific Internal Energy", Wx, Wy, Ww,Wh);\
       Wx += offx;
 	  miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
 	                           I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
+=======
+      VisualizeField(vis_e, vishost, visport, e_gf,
+                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
+>>>>>>> 9b13adb62fcb207f9257a47fbae6b5b48b082ed0
    }
 
    // Save data for VisIt visualization
@@ -447,6 +455,7 @@ int main(int argc, char *argv[])
          // Repeat (solve again) with a decreased time step - decrease of the
          // time estimate suggests appearance of oscillations.
          dt *= 0.85;
+         if (dt < 1e-14) { MFEM_ABORT("The time step crashed!"); }
          t = t_old;
          S = S_old;
          oper.ResetQuadratureData();
@@ -458,39 +467,13 @@ int main(int argc, char *argv[])
       // Make sure that the mesh corresponds to the new solution state.
       pmesh->NewNodes(x_gf, false);
 
-      if (gfprint == 1)
-      {
-         ostringstream v_name, e_name, mesh_name;
-         v_name << basename << "_" << setfill('0') << setw(6) << t << "_"
-                << "v." << setfill('0') << setw(6) << myid;
-         e_name << basename << "_" << setfill('0') << setw(6) << t << "_"
-                << "e." << setfill('0') << setw(6) << myid;
-         mesh_name << basename << "_" << setfill('0') << setw(6) << t << "_"
-                   << "mesh." << setfill('0') << setw(6) << myid;
-
-         ofstream mesh_ofs(mesh_name.str().c_str());
-         mesh_ofs.precision(8);
-         pmesh->Print(mesh_ofs);
-         mesh_ofs.close();
-
-         ofstream v_ofs(v_name.str().c_str());
-         v_ofs.precision(8);
-         v_gf.Save(v_ofs);
-         v_ofs.close();
-
-         ofstream e_ofs(e_name.str().c_str());
-         e_ofs.precision(8);
-         e_gf.Save(e_ofs);
-         e_ofs.close();
-      }
-
       if (last_step || (ti % vis_steps) == 0)
       {
          // Make sure all ranks have sent their 'v' solution before initiating
          // another set of GLVis connections (one from each rank):
          MPI_Barrier(pmesh->GetComm());
 
-		 if (visualization || visit) { oper.ComputeDensity(rho_gf); }
+         if (visualization || visit || gfprint) { oper.ComputeDensity(rho_gf); }
 
          /////////////////////////////////////
          // NONLOCAL CALCULATION SECTION /////
@@ -517,14 +500,14 @@ int main(int argc, char *argv[])
             int Ww = 350, Wh = 350; // window size
             int offx = Ww+10; // window offsets
 
-            miniapps::VisualizeField(vis_rho, vishost, visport, rho_gf,
-                                     "Density", Wx, Wy, Ww, Wh);
+            VisualizeField(vis_rho, vishost, visport, rho_gf,
+                           "Density", Wx, Wy, Ww, Wh);
             Wx += offx;
-            miniapps::VisualizeField(vis_v, vishost, visport,
-                                     v_gf, "Velocity", Wx, Wy, Ww, Wh);
+            VisualizeField(vis_v, vishost, visport,
+                           v_gf, "Velocity", Wx, Wy, Ww, Wh);
             Wx += offx;
-            miniapps::VisualizeField(vis_e, vishost, visport, e_gf,
-                                     "Specific Internal Energy", Wx, Wy, Ww,Wh);
+            VisualizeField(vis_e, vishost, visport, e_gf,
+                           "Specific Internal Energy", Wx, Wy, Ww,Wh);
             Wx += offx;
 			miniapps::VisualizeField(vis_I1Magnitude, vishost, visport, 
 			                         I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
@@ -551,6 +534,39 @@ int main(int argc, char *argv[])
                  << ",\t|e| = " << setprecision(10) 
 				 << sqrt(tot_norm) << endl;
          }	 
+
+         if (gfprint)
+         {
+            ostringstream mesh_name, rho_name, v_name, e_name;
+            mesh_name << basename << "_" << ti << "_"
+                      << "mesh." << setfill('0') << setw(6) << myid;
+            rho_name  << basename << "_" << ti << "_"
+                      << "rho." << setfill('0') << setw(6) << myid;
+            v_name << basename << "_" << ti << "_"
+                   << "v." << setfill('0') << setw(6) << myid;
+            e_name << basename << "_" << ti << "_"
+                   << "e." << setfill('0') << setw(6) << myid;
+
+            ofstream rho_ofs(rho_name.str().c_str());
+            rho_ofs.precision(8);
+            rho_gf.Save(rho_ofs);
+            rho_ofs.close();
+
+            ofstream mesh_ofs(mesh_name.str().c_str());
+            mesh_ofs.precision(8);
+            pmesh->Print(mesh_ofs);
+            mesh_ofs.close();
+
+            ofstream v_ofs(v_name.str().c_str());
+            v_ofs.precision(8);
+            v_gf.Save(v_ofs);
+            v_ofs.close();
+
+            ofstream e_ofs(e_name.str().c_str());
+            e_ofs.precision(8);
+            e_gf.Save(e_ofs);
+            e_ofs.close();
+         }
       }
    }
    double rho_max, rho_min;
@@ -626,7 +642,7 @@ double gamma(const Vector &x)
       case 1: return 1.4;
       case 2: return 1.4;
       case 3: if (x(0) > 1.0 && x(1) <= 1.5) { return 1.4; }
-         else return 1.5;
+         else { return 1.5; }
       default: MFEM_ABORT("Bad number given for problem id!"); return 0.0;
    }
 }
