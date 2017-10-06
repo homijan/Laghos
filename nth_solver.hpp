@@ -1,9 +1,9 @@
-#ifndef MFEM_PNONLOCALOPERATOR
-#define MFEM_PNONLOCALOPERATOR
+#ifndef MFEM_NTH_SOLVER
+#define MFEM_NTH_SOLVER
 
 #include "mfem.hpp"
-#include "nonlocalinteg.hpp"
-#include "ic.hpp"
+#include "nth_integ.hpp"
+#include "nth_coeffs.hpp"
 
 #ifdef MFEM_USE_MPI
 

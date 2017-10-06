@@ -46,7 +46,7 @@
 
 
 #include "laghos_solver.hpp"
-#include "pnonlocaloperator.hpp"
+#include "nth_solver.hpp"
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -254,64 +254,6 @@ int main(int argc, char *argv[])
    // mesh positions to the values in x_gf.
    pmesh->SetNodalGridFunction(&x_gf);
 
-   /////////////////////////////////////
-   // NONLOCAL CALCULATION SECTION /////
-   /////////////////////////////////////
-   // Create the operator for nonlocal calculation.
-   //L2_FECollection T_fe_coll(order_e, dim);
-   //ParFiniteElementSpace pT_fespace(pmesh, &T_fe_coll);
-   int Aorder_phi = 1;
-   int Aorder_theta = 1;
-   int Iorder = order_e + 1;
-   int Torder = order_e;
-   double tol_NL = 1e-7;
-
-   nth::KAPPA = 0.4285;
-   nth::SIGMA = 2.0*nth::KAPPA;
-   nth::EFIELD = 0.75*nth::KAPPA;
-
-   nth::ParNonlocalOperator operNonlocal(pmesh, &L2FESpace, Iorder, Torder,
-      Aorder_phi, Aorder_theta);
-   // Get the grid function representing the nonlocal intensity.
-   ParGridFunction &u = *(operNonlocal.GetIntensityGridFunction());
-   // Define spatial dependent transport quantities (direction integrated).
-   ParFiniteElementSpace I_fespace(pmesh, operNonlocal.GetXfec());
-   ParGridFunction I1Magnitude_gf(&I_fespace);
-   // Transport coefficients.
-   VectorFunctionCoefficient Efield(dim, nth::Efield_function);
-   FunctionCoefficient kappa(nth::kappa_function);
-   FunctionCoefficient isosigma(nth::isosigma_function);
-   FunctionCoefficient sourceb(nth::source_function_cos);
-   Coefficient *Cv = NULL, *sourceCoeffT = NULL, *sourceT = NULL;
-   ParGridFunction *source_NL=NULL;
-   // Discretize the analytical model.
-   operNonlocal.ModelAlgebraicTranslation(Cv, &kappa, &isosigma, &sourceb,
-      sourceCoeffT, sourceT, &Efield);
-   // NonlocalOperator operNonlocal does internally the evaluation of
-   // intensity and its moments can be obtained by the following coefficients.
-   //Coefficient &I0_nonlocal = *(operNonlocal.GetZeroMomentCoefficient());
-   Coefficient &I1Magnitude_nonlocal = 
-      *(operNonlocal.GetFirstMomentMagnitudeCoefficient());
-   //Coefficient &I1z_nonlocal = *(operNonlocal.GetFirstMomentZCoefficient());
-   //Coefficient &I1x_nonlocal = *(operNonlocal.GetFirstMomentXCoefficient());
-   //VectorCoefficient &I1_nonlocal = *(operNonlocal.GetFirstMomentCoefficient());
-
-   int nti_NL;
-   double dt_NL = 1.;
-   double Umax_NL = -1e-32;
-   double dUmax_NL = 1e-32;
-   operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
-      source_NL);
-   if (mpi.Root())
-   {
-      cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
-	     << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
-   }
-   I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
-   /////////////////////////////////////
-   // NONLOCAL CALCULATION SECTION /////
-   /////////////////////////////////////
-
    // Initialize the velocity.
    VectorFunctionCoefficient v_coeff(pmesh->Dimension(), v0);
    v_gf.ProjectCoefficient(v_coeff);
@@ -367,6 +309,71 @@ int main(int argc, char *argv[])
 
    ParGridFunction rho_gf;
    if (visualization || visit) { oper.ComputeDensity(rho_gf); }
+
+   /////////////////////////////////////
+   // NONLOCAL CALCULATION SECTION /////
+   /////////////////////////////////////
+   // Create the operator for nonlocal calculation.
+   //L2_FECollection T_fe_coll(order_e, dim);
+   //ParFiniteElementSpace pT_fespace(pmesh, &T_fe_coll);
+   int Aorder_phi = 1;
+   int Aorder_theta = 1;
+   int Iorder = order_e + 1;
+   int Torder = order_e;
+   double tol_NL = 1e-7;
+
+   nth::KAPPA = 0.4285;
+   nth::SIGMA = 2.0*nth::KAPPA;
+   nth::EFIELD = 0.75*nth::KAPPA;
+
+   nth::ParNonlocalOperator operNonlocal(pmesh, &L2FESpace, Iorder, Torder,
+      Aorder_phi, Aorder_theta);
+   // Get the grid function representing the nonlocal intensity.
+   ParGridFunction &u = *(operNonlocal.GetIntensityGridFunction());
+   // Define spatial dependent transport quantities (direction integrated).
+   ParFiniteElementSpace I_fespace(pmesh, operNonlocal.GetXfec());
+   ParGridFunction I1Magnitude_gf(&I_fespace);
+   // Transport coefficients.
+   FunctionCoefficient kappa_fcf(nth::kappa_function);
+   FunctionCoefficient isosigma_fcf(nth::isosigma_function);
+   FunctionCoefficient sourceb_fcf(nth::source_function_cos);
+   VectorFunctionCoefficient Efield_fcf(dim, nth::Efield_function);
+   
+   Coefficient *kappa = &kappa_fcf;
+   Coefficient *isosigma = &isosigma_fcf;
+   Coefficient *sourceb = &sourceb_fcf;
+   VectorCoefficient *Efield = &Efield_fcf;
+
+   Coefficient *Cv = NULL, *sourceCoeffT = NULL, *sourceT = NULL;
+   ParGridFunction *source_NL=NULL;
+   // Discretize the analytical model.
+   operNonlocal.ModelAlgebraicTranslation(Cv, kappa, isosigma, sourceb,
+      sourceCoeffT, sourceT, Efield);
+   // NonlocalOperator operNonlocal does internally the evaluation of
+   // intensity and its moments can be obtained by the following coefficients.
+   //Coefficient &I0_nonlocal = *(operNonlocal.GetZeroMomentCoefficient());
+   Coefficient &I1Magnitude_nonlocal = 
+      *(operNonlocal.GetFirstMomentMagnitudeCoefficient());
+   //Coefficient &I1z_nonlocal = *(operNonlocal.GetFirstMomentZCoefficient());
+   //Coefficient &I1x_nonlocal = *(operNonlocal.GetFirstMomentXCoefficient());
+   //VectorCoefficient &I1_nonlocal = 
+   //   *(operNonlocal.GetFirstMomentCoefficient());
+
+   int nti_NL;
+   double dt_NL = 1.;
+   double Umax_NL = -1e-32;
+   double dUmax_NL = 1e-32;
+   operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
+      source_NL);
+   //if (mpi.Root())
+   //{
+   //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
+   //      << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
+   //}
+   I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
+   /////////////////////////////////////
+   // NONLOCAL CALCULATION SECTION /////
+   /////////////////////////////////////
 
    if (visualization)
    {
@@ -479,22 +486,11 @@ int main(int argc, char *argv[])
 
       if (last_step || (ti % vis_steps) == 0)
       {
-         double loc_norm = e_gf * e_gf, tot_norm;
-         MPI_Allreduce(&loc_norm, &tot_norm, 1, MPI_DOUBLE, MPI_SUM,
-                       pmesh->GetComm());
-         if (mpi.Root())
-         {
-            cout << fixed;
-            cout << "step " << setw(5) << ti
-                 << ",\tt = " << setw(5) << setprecision(4) << t
-                 << ",\tdt = " << setw(5) << setprecision(6) << dt
-                 << ",\t|e| = " << setprecision(10)
-                 << sqrt(tot_norm) << endl;
-         }
-
          // Make sure all ranks have sent their 'v' solution before initiating
          // another set of GLVis connections (one from each rank):
          MPI_Barrier(pmesh->GetComm());
+
+		 if (visualization || visit) { oper.ComputeDensity(rho_gf); }
 
          /////////////////////////////////////
          // NONLOCAL CALCULATION SECTION /////
@@ -515,7 +511,6 @@ int main(int argc, char *argv[])
          // NONLOCAL CALCULATION SECTION END //
          //////////////////////////////////////
 
-		 if (visualization || visit) { oper.ComputeDensity(rho_gf); }
          if (visualization)
          {
             int Wx = 0, Wy = 0; // window position
@@ -541,6 +536,21 @@ int main(int argc, char *argv[])
             visit_dc.SetTime(t);
             visit_dc.Save();
          }
+
+         double loc_norm = e_gf * e_gf, tot_norm;
+         MPI_Allreduce(&loc_norm, &tot_norm, 1, MPI_DOUBLE, MPI_SUM,
+                       pmesh->GetComm());
+         
+		 if (mpi.Root())
+         {
+            cout << fixed;
+            cout << "step " << setw(5) << ti
+                 << ",\tNTH iter = " << setw(5) << nti_NL
+                 << ",\tt = " << setw(5) << setprecision(4) << t
+                 << ",\tdt = " << setw(5) << setprecision(6) << dt
+                 << ",\t|e| = " << setprecision(10) 
+				 << sqrt(tot_norm) << endl;
+         }	 
       }
    }
    double rho_max, rho_min;
