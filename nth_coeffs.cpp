@@ -85,6 +85,16 @@ double source_function_cos(const Vector &x_coord)
    return kappa*S;
 }
 
+double source_function_const(const Vector &x_coord)
+{
+   double kappa, S;
+
+   kappa = kappa_function(x_coord);
+   S = 1.;
+
+   return kappa*S;
+}
+
 } // namespace nth
 
 } //namespace mfem

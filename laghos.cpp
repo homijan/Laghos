@@ -88,6 +88,9 @@ int main(int argc, char *argv[])
    bool visit = false;
    bool gfprint = false;
    const char *basename = "results/Laghos";
+   bool nonlocal = true;
+   int Aorder_phi = 1;
+   int Aorder_omega = 1;
 
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
@@ -121,6 +124,13 @@ int main(int argc, char *argv[])
                   "Enable or disable result output (files in mfem format).");
    args.AddOption(&basename, "-k", "--outputfilename",
                   "Name of the visit dump files");
+   args.AddOption(&nonlocal, "-nl", "--nonlocal-transport", "-no-nl",
+                  "--no-nonlocal-transport",
+                  "Activate 1D tensor-based assembly (partial assembly).");
+   args.AddOption(&Aorder_phi, "-op", "--order-angle-phi",
+                  "Order (degree) of the angle-phi finite element space.");
+   args.AddOption(&Aorder_omega, "-oo", "--order-angle-omega",
+                  "Order (degree) of the angle-omega finite element space.");
    args.Parse();
    if (!args.Good())
    {
@@ -322,19 +332,16 @@ int main(int argc, char *argv[])
    // Create the operator for nonlocal calculation.
    //L2_FECollection T_fe_coll(order_e, dim);
    //ParFiniteElementSpace pT_fespace(pmesh, &T_fe_coll);
-   int Aorder_phi = 1;
-   int Aorder_theta = 1;
    int Iorder = order_e + 1;
    int Torder = order_e;
    double tol_NL = 1e-7;
 
    nth::KAPPA = 0.4285;
    nth::SIGMA = 2.0*nth::KAPPA;
-   nth::EFIELD = 0.0;
-   //nth::EFIELD = 0.75*nth::KAPPA;
+   nth::EFIELD = 0.75*nth::KAPPA;
 
    nth::ParNonlocalOperator operNonlocal(pmesh, &L2FESpace, Iorder, Torder,
-      Aorder_phi, Aorder_theta);
+      Aorder_phi, Aorder_omega);
    // Get the grid function representing the nonlocal intensity.
    ParGridFunction &u = *(operNonlocal.GetIntensityGridFunction());
    // Define spatial dependent transport quantities (direction integrated).
@@ -344,6 +351,7 @@ int main(int argc, char *argv[])
    FunctionCoefficient kappa_fcf(nth::kappa_function);
    FunctionCoefficient isosigma_fcf(nth::isosigma_function);
    FunctionCoefficient sourceb_fcf(nth::source_function_cos);
+   //FunctionCoefficient sourceb_fcf(nth::source_function_const);
    VectorFunctionCoefficient Efield_fcf(dim, nth::Efield_function);
    
    Coefficient *kappa = &kappa_fcf;
@@ -361,6 +369,9 @@ int main(int argc, char *argv[])
    //Coefficient &I0_nonlocal = *(operNonlocal.GetZeroMomentCoefficient());
    Coefficient &I1Magnitude_nonlocal = 
       *(operNonlocal.GetFirstMomentMagnitudeCoefficient());
+      //*(operNonlocal.GetFirstMomentZCoefficient());
+      //*(operNonlocal.GetFirstMomentXCoefficient());
+      //*(operNonlocal.GetFirstMomentYCoefficient());
    //Coefficient &I1z_nonlocal = *(operNonlocal.GetFirstMomentZCoefficient());
    //Coefficient &I1x_nonlocal = *(operNonlocal.GetFirstMomentXCoefficient());
    //VectorCoefficient &I1_nonlocal = 
@@ -370,8 +381,11 @@ int main(int argc, char *argv[])
    double dt_NL = 1.;
    double Umax_NL = -1e-32;
    double dUmax_NL = 1e-32;
-   operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
-      source_NL);
+   if (nonlocal)
+   {   
+      operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
+         source_NL);
+   }
    //if (mpi.Root())
    //{
    //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
@@ -482,8 +496,11 @@ int main(int argc, char *argv[])
          double dt_NL = 1.;
          double Umax_NL = -1e-32;
          double dUmax_NL = 1e-32;
-         operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
-            source_NL);
+         if (nonlocal)
+         {
+		    operNonlocal.Compute(dt_NL, tol_NL, Umax_NL, dUmax_NL, nti_NL, &u,
+               source_NL);
+         }
          //if (mpi.Root())
          //{
          //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL

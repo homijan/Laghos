@@ -101,7 +101,7 @@ protected:
 	     const IntegrationPoint &ip) {}
    };
 
-   Mesh *Amesh;
+   Mesh *Amesh_pi, *Amesh_twopi;
    L2_FECollection *Afec_phi, *Afec_theta;
    AngularFiniteElementSpace *Afes;
 
@@ -146,25 +146,26 @@ public:
 
    virtual ~ParNonlocalOperator() 
    {
-      delete Amesh;
-	  delete Afec_phi;
-	  delete Afec_theta;
-	  delete Afes;
-	  delete Xfec;
-	  delete pI_fes;
-	  delete pI_pgf;
-	  delete pIK;
-	  delete pIG;
-	  delete pIb;
-	  delete pIS;
-	  delete pTNGrad;
-	  delete pTM;
-	  delete pTb;
-	  delete pMoments_pcf;
+      delete Amesh_pi;
+      delete Amesh_twopi;
+      delete Afec_phi;
+      delete Afec_theta;
+      delete Afes;
+      delete Xfec;
+      delete pI_fes;
+      delete pI_pgf;
+      delete pIK;
+      delete pIG;
+      delete pIb;
+      delete pIS;
+      delete pTNGrad;
+      delete pTM;
+      delete pTb;
+      delete pMoments_pcf;
       delete pZeroMoment_pcf;
-	  delete pFirstMomentz_pcf;
-	  delete pFirstMomentx_pcf;
-	  delete pFirstMomenty_pcf;
+      delete pFirstMomentz_pcf;
+      delete pFirstMomentx_pcf;
+      delete pFirstMomenty_pcf;
       delete pFirstMomentMagnitude_pcf;
    }
 };

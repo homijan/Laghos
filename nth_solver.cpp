@@ -96,20 +96,33 @@ void EIIO_BGK_solver::Step(const double dt, Vector &T0, Vector &T, Vector &I)
 ParNonlocalOperator::ParNonlocalOperator(ParMesh *_pmesh, 
    ParFiniteElementSpace *_pT_fes, int _order_I_x, int _order_T_x, 
    int _order_I_phi, int _order_I_theta) 
-   : Amesh(NULL), Afec_phi(NULL), Afec_theta(NULL), Afes(NULL), pmesh(NULL), 
-   Xfec(NULL), pI_fes(NULL), pT_fes(NULL), pIK(NULL), pIG(NULL), pIb(NULL), 
-   pIS(NULL), pTNGrad(NULL), pTM(NULL), pTb(NULL), pI_pgf(NULL), 
-   pMoments_pcf(NULL)
+   : Amesh_pi(NULL), Amesh_twopi(NULL), Afec_phi(NULL), Afec_theta(NULL),
+   Afes(NULL), pmesh(NULL), Xfec(NULL), pI_fes(NULL), pT_fes(NULL), pIK(NULL),
+   pIG(NULL), pIb(NULL), pIS(NULL), pTNGrad(NULL), pTM(NULL), pTb(NULL),
+   pI_pgf(NULL), pMoments_pcf(NULL)
 {
    // Assign ParMesh and temperature finite element space.
    pmesh = _pmesh;
    pT_fes = _pT_fes;          
    // Construct the angular finite element space.
-   const char *pi_mesh_file = "data/pi_segment.mesh";
-   Amesh = new Mesh(pi_mesh_file, 1, 1); 
-   Afec_phi = new L2_FECollection(_order_I_phi, 1);
-   Afec_theta = new L2_FECollection(_order_I_theta, 1);
-   Afes = new AngularFiniteElementSpace(Amesh, Afec_phi, Amesh, Afec_theta);
+   Afec_phi = new L2_FECollection(_order_I_phi, 1, BasisType::Positive);
+   Afec_theta = new L2_FECollection(_order_I_theta, 1, BasisType::Positive);
+   if (pmesh->Dimension() < 3)
+   {
+      const char *pi_mesh_file = "data/pi_segment.mesh";
+      Amesh_pi = new Mesh(pi_mesh_file, 1, 1);
+      Afes = new AngularFiniteElementSpace(Amesh_pi, Afec_phi, Amesh_pi,
+         Afec_theta);
+   }
+   else
+   {
+      const char *pi_mesh_file = "data/pi_segment.mesh";
+      const char *twopi_mesh_file = "data/twopi_segment.mesh";
+      Amesh_pi = new Mesh(pi_mesh_file, 1, 1);
+      Amesh_twopi = new Mesh(twopi_mesh_file, 1, 1);
+      Afes = new AngularFiniteElementSpace(Amesh_pi, Afec_phi, Amesh_twopi,
+         Afec_theta);
+   }
    int dim = pmesh->Dimension();
    int ndof_afes = Afes->GetAfesNDofs();
    //if (_order_I_phi==0)
@@ -363,7 +376,7 @@ double ParNonlocalOperator::MomentsCoefficient::Eval(ElementTransformation &T,
    else if (component == 2) { return afes_xcomponent*Ix; }
    else if (component == 3) { return afes_ycomponent*Ix; }
    else if (component == -1) 
-   { 
+   {
       if (dim == 1) { return (afes_zcomponent*Ix) * (afes_zcomponent*Ix); }
       else if (dim == 2)
       {

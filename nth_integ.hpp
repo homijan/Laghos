@@ -57,7 +57,7 @@ public:
 /// Class for angular finite element space.
 class AngularFiniteElementSpace
 {
-private:
+protected:
    FiniteElementSpace fes_phi, fes_theta;
    const FiniteElement *fe_phi, *fe_theta;
    ElementTransformation *Trans_phi, *Trans_theta;
@@ -65,6 +65,7 @@ private:
    IntegrationRule *ir_phi_unique, *ir_theta_unique;
 
    int afes_ndofs;
+   bool symmetry2D;
 
 public:
    AngularFiniteElementSpace(Mesh *mesh_phi,  

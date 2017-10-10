@@ -106,15 +106,18 @@ void InvMassLocalIntegrator::AssembleElementMatrix2(
 }
 
 
-AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi, 
-   const FiniteElementCollection *fec_phi, Mesh *mesh_theta, 
+AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
+   const FiniteElementCollection *fec_phi, Mesh *mesh_theta,
    const FiniteElementCollection *fec_theta) : 
-   //FiniteElementSpace(mesh_phi, fec_phi), 
    fes_phi(mesh_phi, fec_phi), fes_theta(mesh_theta, fec_theta),
    fe_phi(NULL), fe_theta(NULL), Trans_phi(NULL), Trans_theta(NULL),
-   ir_phi(NULL), ir_theta(NULL), ir_phi_unique(NULL), ir_theta_unique(NULL)
+   ir_phi(NULL), ir_theta(NULL), ir_phi_unique(NULL), ir_theta_unique(NULL),
+   symmetry2D(false)
 {
    cout << "AS constructor..." << endl << flush;
+   // If phi/theta meshes both extend over one pi, 
+   // the problem is symmetric in 2D.
+   if (mesh_phi == mesh_theta) { symmetry2D = true; }
 
    // Entire angular finite element space has ndof_phi*ndof_theta
    afes_ndofs = fes_phi.GetNDofs()*fes_theta.GetNDofs();
@@ -126,10 +129,10 @@ AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
    Trans_phi = fes_phi.GetElementTransformation(0);
    Trans_theta = fes_theta.GetElementTransformation(0);
    // Integration rules for phi and theta dimension.
-   int multiple = 2;
+   int phitheta_multiple = 4;
    if (ir_phi == NULL)
    {
-      int order = multiple*fe_phi->GetOrder(); // + Trans->OrderW();
+      int order = phitheta_multiple*fe_phi->GetOrder(); // + Trans->OrderW();
       //cout << "order: " << order << endl << flush;
       ir_phi = &IntRules.Get(fe_phi->GetGeomType(), order);
       for (int iphi = 0; iphi < ir_phi->GetNPoints(); iphi++)
@@ -141,7 +144,7 @@ AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
    }
    if (ir_theta == NULL)
    {
-      int order = multiple*fe_theta->GetOrder();
+      int order = phitheta_multiple*fe_theta->GetOrder();
       ir_theta = &IntRules.Get(fe_theta->GetGeomType(), order);
       for (int itheta = 0; itheta < ir_theta->GetNPoints(); itheta++)
       {
@@ -192,7 +195,7 @@ void AngularFiniteElementSpace::CalcShape(const IntegrationPoint &ip_phi,
    w = Trans_phi->Weight() * ip_phi.weight; 
    w *= Trans_theta->Weight() * ip_theta.weight; 
    // if symmetric f(theta) = f(-theta)
-   w *= 2.;
+   if (symmetry2D) { w *= 2.; }
    // Spherical integration factor sin(phi)
    w *= sin.Eval(*Trans_phi, ip_phi);  
 }
