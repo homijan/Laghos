@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
    const char *basename = "results/Laghos";
    bool nonlocal = true;
    int Aorder_phi = 1;
-   int Aorder_omega = 1;
+   int Aorder_omega = 2;
 
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
@@ -319,7 +319,7 @@ int main(int argc, char *argv[])
                                 ess_tdofs, rho, source, cfl, material_pcf,
                                 visc, p_assembly);
 
-   socketstream vis_rho, vis_v, vis_e, vis_I0, vis_I1Magnitude;
+   socketstream vis_rho, vis_v, vis_e, vis_q;
    char vishost[] = "localhost";
    int  visport   = 19916;
 
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
    //ParFiniteElementSpace pT_fespace(pmesh, &T_fe_coll);
    int Iorder = order_e + 1;
    int Torder = order_e;
-   double tol_NL = 1e-7;
+   double tol_NL = 1e-12;
 
    nth::KAPPA = 0.4285;
    nth::SIGMA = 2.0*nth::KAPPA;
@@ -346,21 +346,29 @@ int main(int argc, char *argv[])
    ParGridFunction &u = *(operNonlocal.GetIntensityGridFunction());
    // Define spatial dependent transport quantities (direction integrated).
    ParFiniteElementSpace I_fespace(pmesh, operNonlocal.GetXfec());
-   ParGridFunction I1Magnitude_gf(&I_fespace);
+   ParGridFunction q_gf(&I_fespace);
    // Transport coefficients.
    FunctionCoefficient kappa_fcf(nth::kappa_function);
    FunctionCoefficient isosigma_fcf(nth::isosigma_function);
    FunctionCoefficient sourceb_fcf(nth::source_function_cos);
    //FunctionCoefficient sourceb_fcf(nth::source_function_const);
    VectorFunctionCoefficient Efield_fcf(dim, nth::Efield_function);
-   
-   Coefficient *kappa = &kappa_fcf;
-   Coefficient *isosigma = &isosigma_fcf;
-   Coefficient *sourceb = &sourceb_fcf;
-   VectorCoefficient *Efield = &Efield_fcf;
 
-   Coefficient *Cv = NULL, *sourceCoeffT = NULL, *sourceT = NULL;
-   ParGridFunction *source_NL=NULL;
+   double a0 = 5e0;
+   nth::RealisticInverseMFPCoefficient InvMFP(a0, &rho_gf, 1.0, &e_gf, -0.2);
+   nth::RealisticSourceCoefficient HydroS(a0, &InvMFP, &rho_gf, 1.0, &e_gf,
+      0.0);
+
+   //Coefficient *kappa = &kappa_fcf;
+   Coefficient *kappa = &InvMFP;
+   Coefficient *isosigma = NULL; //&isosigma_fcf;
+   Coefficient *sourceb = &HydroS; //&sourceb_fcf;
+   VectorCoefficient *Efield = NULL; //&Efield_fcf;
+   Coefficient *Cv = NULL;
+   Coefficient *sourceCoeffT = NULL;
+   Coefficient *sourceT = NULL;
+   ParGridFunction *source_NL = NULL;
+
    // Discretize the analytical model.
    operNonlocal.ModelAlgebraicTranslation(Cv, kappa, isosigma, sourceb,
       sourceCoeffT, sourceT, Efield);
@@ -391,7 +399,7 @@ int main(int argc, char *argv[])
    //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
    //      << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
    //}
-   I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
+   q_gf.ProjectCoefficient(I1Magnitude_nonlocal);
    /////////////////////////////////////
    // NONLOCAL CALCULATION SECTION /////
    /////////////////////////////////////
@@ -405,8 +413,7 @@ int main(int argc, char *argv[])
       vis_rho.precision(8);
       vis_v.precision(8);
       vis_e.precision(8);
-      vis_I0.precision(8);
-      vis_I1Magnitude.precision(8);
+      vis_q.precision(8);
 
       int Wx = 0, Wy = 0; // window position
       const int Ww = 350, Wh = 350; // window size
@@ -420,9 +427,12 @@ int main(int argc, char *argv[])
       Wx += offx;
       VisualizeField(vis_e, vishost, visport, e_gf,
                                "Specific Internal Energy", Wx, Wy, Ww,Wh);
-      Wx += offx;
-	  VisualizeField(vis_I1Magnitude, vishost, visport, 
-	                           I1Magnitude_gf, "|q|", Wx, Wy, Ww, Wh);
+      if (nonlocal)
+      {
+	     Wx += offx;
+	     VisualizeField(vis_q, vishost, visport, q_gf,
+                        "|q|", Wx, Wy, Ww, Wh);
+      }
    }
 
    // Save data for VisIt visualization
@@ -506,7 +516,7 @@ int main(int argc, char *argv[])
          //   cout << "operNonlocal - Umax(iter, dUmax): " << Umax_NL
 	     //      << " ( " << nti_NL << ", " << dUmax_NL << " )"<< endl << flush;
          //}
-		 I1Magnitude_gf.ProjectCoefficient(I1Magnitude_nonlocal);
+		 q_gf.ProjectCoefficient(I1Magnitude_nonlocal);
 		 //////////////////////////////////////
          // NONLOCAL CALCULATION SECTION END //
          //////////////////////////////////////
@@ -525,9 +535,12 @@ int main(int argc, char *argv[])
             Wx += offx;
             VisualizeField(vis_e, vishost, visport, e_gf,
                            "Specific Internal Energy", Wx, Wy, Ww,Wh);
-            Wx += offx;
-			VisualizeField(vis_I1Magnitude, vishost, visport, I1Magnitude_gf, 
-			               "|q|", Wx, Wy, Ww, Wh);
+            if (nonlocal)
+            {
+			   Wx += offx;
+			   VisualizeField(vis_q, vishost, visport, q_gf,
+			                  "|q|", Wx, Wy, Ww, Wh);
+            }
          }
 
          if (visit)
@@ -540,13 +553,17 @@ int main(int argc, char *argv[])
          double loc_norm = e_gf * e_gf, tot_norm;
          MPI_Allreduce(&loc_norm, &tot_norm, 1, MPI_DOUBLE, MPI_SUM,
                        pmesh->GetComm());
+         double loc_qmax = q_gf.Max(), tot_qmax;
+         MPI_Allreduce(&loc_qmax, &tot_qmax, 1, MPI_DOUBLE, MPI_MAX,
+                       pmesh->GetComm());
          
 		 if (mpi.Root())
          {
             cout << fixed;
             cout << "step " << setw(5) << ti
                  << ",\tNTH iter = " << setw(5) << nti_NL
-                 << ",\tt = " << setw(5) << setprecision(4) << t
+                 << ",\tNTH max(q) = " << setw(10) << tot_qmax
+				 << ",\tt = " << setw(5) << setprecision(4) << t
                  << ",\tdt = " << setw(5) << setprecision(6) << dt
                  << ",\t|e| = " << setprecision(10) 
 				 << sqrt(tot_norm) << endl;
@@ -554,7 +571,7 @@ int main(int argc, char *argv[])
 
          if (gfprint)
          {
-            ostringstream mesh_name, rho_name, v_name, e_name;
+            ostringstream mesh_name, rho_name, v_name, e_name, q_name;
             mesh_name << basename << "_" << ti << "_"
                       << "mesh." << setfill('0') << setw(6) << myid;
             rho_name  << basename << "_" << ti << "_"
@@ -563,6 +580,8 @@ int main(int argc, char *argv[])
                    << "v." << setfill('0') << setw(6) << myid;
             e_name << basename << "_" << ti << "_"
                    << "e." << setfill('0') << setw(6) << myid;
+            q_name << basename << "_" << ti << "_"
+                   << "q." << setfill('0') << setw(6) << myid;
 
             ofstream rho_ofs(rho_name.str().c_str());
             rho_ofs.precision(8);
@@ -583,13 +602,20 @@ int main(int argc, char *argv[])
             e_ofs.precision(8);
             e_gf.Save(e_ofs);
             e_ofs.close();
+
+            ofstream q_ofs(q_name.str().c_str());
+            q_ofs.precision(8);
+            q_gf.Save(e_ofs);
+            q_ofs.close();
          }
       }
    }
    if (visualization)
    {
+      vis_rho.close();
       vis_v.close();
       vis_e.close();
+      vis_q.close();
    }
 
    // Free the used memory.

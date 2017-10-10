@@ -18,8 +18,8 @@ protected:
    double a0, a1, a2;
    ParGridFunction *gf1, *gf2;
 public:
-   HydroCoefficient(double _a0, ParGridFunction *_gf1, ParGridFunction *_gf2,
-      double _a1, double _a2) : gf1(_gf1), gf2(_gf2)
+   HydroCoefficient(double _a0, ParGridFunction *_gf1, double _a1,
+      ParGridFunction *_gf2, double _a2) : gf1(_gf1), gf2(_gf2)
       { a0 = _a0; a1 = _a1; a2 = _a2; }
    virtual double Eval(ElementTransformation &T,
       const IntegrationPoint &ip) = 0;
@@ -33,11 +33,16 @@ class RealisticInverseMFPCoefficient : public HydroCoefficient
 protected:
 public:
    RealisticInverseMFPCoefficient(double _a0, ParGridFunction *_gf1=NULL,
-      ParGridFunction *_gf2=NULL, double _a1=1.0, double _a2=1.0 )
-      : HydroCoefficient(_a0, _gf1, _gf2, _a1, _a2) {}
+      double _a1=1.0, ParGridFunction *_gf2=NULL, double _a2=1.0 )
+      : HydroCoefficient(_a0, _gf1, _a1, _gf2, _a2) {}
    double Eval(ElementTransformation &T, const IntegrationPoint &ip)
-      { return a0 * pow(gf1->GetValue(T.ElementNo, ip), a1) *
-	     pow(gf2->GetValue(T.ElementNo, ip), a2); }
+      {
+         double f1 = 1.0;
+         if (gf1 != NULL) { f1 = max(1e-0, gf1->GetValue(T.ElementNo, ip)); }
+         double f2 = 1.0;
+         if (gf2 != NULL) { f2 = max(1e-0, gf2->GetValue(T.ElementNo, ip)); }
+         return a0 * pow(f1, a1) * pow(f2, a2);
+      }
 
    ~RealisticInverseMFPCoefficient() {}
 };
@@ -49,13 +54,17 @@ class RealisticSourceCoefficient : public HydroCoefficient
 protected:
 public:
    RealisticSourceCoefficient(double _a0, RealisticInverseMFPCoefficient *_cf,
-      ParGridFunction *_gf1=NULL, ParGridFunction *_gf2=NULL, double _a1=1.0,
-      double _a2=1.0 ) : HydroCoefficient(_a0, _gf1, _gf2, _a1, _a2),
+      ParGridFunction *_gf1=NULL, double _a1=1.0, ParGridFunction *_gf2=NULL,
+      double _a2=1.0 ) : HydroCoefficient(_a0, _gf1, _a1, _gf2, _a2),
       InvMFP_cf(_cf) { }
    double Eval(ElementTransformation &T, const IntegrationPoint &ip)
-      { return a0 * InvMFP_cf->Eval(T, ip) *
-	     pow(gf1->GetValue(T.ElementNo, ip), a1) *
-	     pow(gf2->GetValue(T.ElementNo, ip), a2); }
+      {
+         double f1 = 1.0;
+         if (gf1 != NULL) { f1 = max(1e-0, gf1->GetValue(T.ElementNo, ip)); }
+         double f2 = 1.0;
+         if (gf2 != NULL) { f2 = max(1e-0, gf2->GetValue(T.ElementNo, ip)); }
+         return a0 * InvMFP_cf->Eval(T, ip) * pow(f1, a1) * pow(f2, a2);
+      }
 
    ~RealisticSourceCoefficient() {}
 };

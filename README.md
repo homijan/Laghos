@@ -184,6 +184,7 @@ mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh -rs 2 -tf 0.6 -no-vis -pa
 The latter produces the following density plot (when run with `-vis` instead of `-no-vis`)
 
 ![Sedov blast image](data/sedov.png)
+![NTHSedov blast image](data/nth_sedov.png)
 
 #### Taylor-Green vortex
 

@@ -114,8 +114,8 @@ AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
    ir_phi(NULL), ir_theta(NULL), ir_phi_unique(NULL), ir_theta_unique(NULL),
    symmetry2D(false)
 {
-   cout << "AS constructor..." << endl << flush;
-   // If phi/theta meshes both extend over one pi, 
+   //cout << "AS constructor..." << endl << flush;
+   // If phi/theta meshes both extend over one pi,
    // the problem is symmetric in 2D.
    if (mesh_phi == mesh_theta) { symmetry2D = true; }
 
@@ -138,8 +138,8 @@ AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
       for (int iphi = 0; iphi < ir_phi->GetNPoints(); iphi++)
       {
          const IntegrationPoint &ip_phi = ir_phi->IntPoint(iphi);
-	  	 cout << "ip_phi w, x: " << ip_phi.x << ", " << 
-	  	 ip_phi.weight << endl << flush;
+         //cout << "ip_phi w, x: " << ip_phi.x << ", " <<
+         //ip_phi.weight << endl << flush;
 	  }
    }
    if (ir_theta == NULL)
@@ -149,8 +149,8 @@ AngularFiniteElementSpace::AngularFiniteElementSpace(Mesh *mesh_phi,
       for (int itheta = 0; itheta < ir_theta->GetNPoints(); itheta++)
       {
          const IntegrationPoint &ip_theta = ir_theta->IntPoint(itheta);
-	  	 cout << "ip_theta w, x: " << ip_theta.x << ", " << 
-	  	 ip_theta.weight << endl << flush;
+         //cout << "ip_theta w, x: " << ip_theta.x << ", " <<
+         //ip_theta.weight << endl << flush;
 	  }
    }
 }
