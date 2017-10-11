@@ -178,12 +178,11 @@ partial assembly option (`-pa`).
 Some sample runs in 2D and 3D respectively are:
 ```sh
 mpirun -np 8 laghos -p 1 -m data/square01_quad.mesh -rs 3 -tf 0.8 -no-vis -pa
-mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh -rs 2 -tf 0.6 -no-vis -pa
+mpirun -np 8 laghos -p 1 -m data/cube01_hex.mesh -rs 2 -tf 0.6 -no-vis -pa -nl -op 2 -oo 3
 ```
 
-The latter produces the following density plot (when run with `-vis` instead of `-no-vis`)
+The latter produces the following density (left) and nonlocal flux (right) plot (when run with `-vis` instead of `-no-vis`)
 
-![Sedov blast image](data/sedov.png)
 ![NTHSedov blast image](data/nth_sedov.png)
 
 #### Taylor-Green vortex

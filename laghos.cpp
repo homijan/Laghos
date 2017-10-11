@@ -605,7 +605,7 @@ int main(int argc, char *argv[])
 
             ofstream q_ofs(q_name.str().c_str());
             q_ofs.precision(8);
-            q_gf.Save(e_ofs);
+            q_gf.Save(q_ofs);
             q_ofs.close();
          }
       }
