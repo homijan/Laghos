@@ -44,7 +44,7 @@ struct QuadratureData
    // each quadrature point, it combines the stress, inverse Jacobian,
    // determinant of the Jacobian and the integration weight. It must be
    // recomputed in every time step.
-   DenseTensor stressJinvT;
+   DenseTensor vstressJinvT, tstressJinvT;
 
    // Quadrature data used for full/partial assembly of the mass matrices. At
    // time zero, we compute and store (rho0 * det(J0) * qp_weight) at each
@@ -63,8 +63,9 @@ struct QuadratureData
 
    QuadratureData(int dim, int nzones, int quads_per_zone)
       : Jac0inv(dim, dim, nzones * quads_per_zone),
-        stressJinvT(nzones * quads_per_zone, dim, dim),
-        rho0DetJ0w(nzones * quads_per_zone) { }
+        vstressJinvT(nzones * quads_per_zone, dim, dim),
+        tstressJinvT(nzones * quads_per_zone, dim, dim),
+		rho0DetJ0w(nzones * quads_per_zone) { }
 };
 
 // Stores values of the one-dimensional shape functions and gradients at all 1D

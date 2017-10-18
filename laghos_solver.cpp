@@ -458,7 +458,8 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
    v.MakeRef(&H1FESpace, *sptr, H1FESpace.GetVSize());
    e.MakeRef(&L2FESpace, *sptr, 2*H1FESpace.GetVSize());
    Vector e_vals, e_loc(l2dofs_cnt), vector_vals(h1dofs_cnt * dim);
-   DenseMatrix Jpi(dim), sgrad_v(dim), Jinv(dim), stress(dim), stressJiT(dim),
+   DenseMatrix Jpi(dim), sgrad_v(dim), Jinv(dim), vstress(dim),
+               vstressJiT(dim), tstress(dim), tstressJiT(dim),
                vecvalMat(vector_vals.GetData(), h1dofs_cnt, dim);
    DenseTensor grad_v_ref(dim, dim, nqp);
    Array<int> L2dofs, H1dofs;
@@ -470,11 +471,13 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
    int nzones_batch = 3;
    const int nbatches =  nzones / nzones_batch + 1; // +1 for the remainder.
    int nqp_batch = nqp * nzones_batch;
-   double *gamma_b = new double[nqp_batch],
-   *rho_b = new double[nqp_batch],
-   *e_b   = new double[nqp_batch],
-   *p_b   = new double[nqp_batch],
-   *cs_b  = new double[nqp_batch];
+   double *gamma_b         = new double[nqp_batch],
+          *rho_b           = new double[nqp_batch],
+          *e_b             = new double[nqp_batch],
+          *p_b             = new double[nqp_batch],
+          *cs_b            = new double[nqp_batch],
+          *dedT_b          = new double[nqp_batch],
+          *rhorhodedrho_b  = new double[nqp_batch];
    // Jacobians of reference->physical transformations for all quadrature
    // points in the batch.
    DenseTensor *Jpr_b = new DenseTensor[nqp_batch];
@@ -526,7 +529,8 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
       }
 
       // Batched computation of material properties.
-      ComputeMaterialProperties(nqp_batch, gamma_b, rho_b, e_b, p_b, cs_b);
+      ComputeMaterialProperties(nqp_batch, gamma_b, rho_b, e_b, p_b, cs_b,
+                                dedT_b, rhorhodedrho_b);
 
       z_id -= nzones_batch;
       for (int z = 0; z < nzones_batch; z++)
@@ -548,10 +552,17 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
             const DenseMatrix &Jpr = Jpr_b[z](q);
             CalcInverse(Jpr, Jinv);
             const double detJ = Jpr.Det(), rho = rho_b[z*nqp + q],
-                         p = p_b[z*nqp + q], sound_speed = cs_b[z*nqp + q];
+                         p = p_b[z*nqp + q], sound_speed = cs_b[z*nqp + q],
+                         dedT = dedT_b[z*nqp + q],
+                         rhorhodedrho = rhorhodedrho_b[z*nqp + q];
 
-            stress = 0.0;
-            for (int d = 0; d < dim; d++) { stress(d, d) = -p; }
+            vstress = 0.0;
+            tstress = 0.0;
+            for (int d = 0; d < dim; d++)
+            {
+               vstress(d, d) = -p;
+               tstress(d, d) = (rhorhodedrho - p)/dedT;
+            }
 
             double visc_coeff = 0.0;
             if (use_viscosity)
@@ -588,7 +599,8 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
                const double mu = eig_val_data[0];
                visc_coeff = 2.0 * rho * h * h * fabs(mu);
                if (mu < 0.0) { visc_coeff += 0.5 * rho * h * sound_speed; }
-               stress.Add(visc_coeff, sgrad_v);
+               vstress.Add(visc_coeff, sgrad_v);
+               tstress.Add(visc_coeff, sgrad_v);
             }
 
             // Time step estimate at the point. Here the more relevant length
@@ -610,14 +622,19 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
             }
 
             // Quadrature data for partial assembly of the force operator.
-            MultABt(stress, Jinv, stressJiT);
-            stressJiT *= integ_rule.IntPoint(q).weight * detJ;
+            MultABt(vstress, Jinv, vstressJiT);
+            vstressJiT *= integ_rule.IntPoint(q).weight * detJ;
+            MultABt(tstress, Jinv, tstressJiT);
+            tstressJiT *= integ_rule.IntPoint(q).weight * detJ;
             for (int vd = 0 ; vd < dim; vd++)
             {
                for (int gd = 0; gd < dim; gd++)
                {
-                  quad_data.stressJinvT(vd)(z_id*nqp + q, gd) =
-                     stressJiT(vd, gd);
+                  quad_data.vstressJinvT(vd)(z_id*nqp + q, gd) =
+                     vstressJiT(vd, gd);
+                  quad_data.tstressJinvT(vd)(z_id*nqp + q, gd) =
+                     tstressJiT(vd, gd);
+
                }
             }
          }
@@ -629,6 +646,8 @@ void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const
    delete [] e_b;
    delete [] p_b;
    delete [] cs_b;
+   delete [] dedT_b;
+   delete [] rhorhodedrho_b;
    delete [] Jpr_b;
    quad_data_is_current = true;
 

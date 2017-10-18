@@ -114,12 +114,16 @@ protected:
 
    void ComputeMaterialProperties(int nvalues, const double gamma[],
                                   const double rho[], const double e[],
-                                  double p[], double cs[]) const
+                                  double p[], double cs[], double dedT[],
+                                  double rhorhodedrho[]) const
    {
-      for (int v = 0; v < nvalues; v++)
+      double kB = 1.0, dedrho = 0.0; // Ideal gas in normal units.
+	  for (int v = 0; v < nvalues; v++)
       {
-         p[v]  = (gamma[v] - 1.0) * rho[v] * e[v];
-         cs[v] = sqrt(gamma[v] * (gamma[v]-1.0) * e[v]);
+         p[v]            = (gamma[v] - 1.0) * rho[v] * e[v];
+         cs[v]           = sqrt(gamma[v] * (gamma[v]-1.0) * e[v]);
+         dedT[v]         = kB;
+         rhorhodedrho[v] = rho[v]*rho[v]*dedrho;
       }
    }
 
