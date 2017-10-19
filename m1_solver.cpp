@@ -30,7 +30,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 {
    dS_dt = 0.0;
 
-   double velocity = GetTime();
+   const double velocity = GetTime();
 
    UpdateQuadratureData(velocity, S);
 
@@ -129,6 +129,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 
    // Solve for energy, assemble the energy source if such exists.
    LinearForm *I0_source = NULL;
+   // TODO I0_source should be evaluated based on precomputed quadrature points.
    //if (source_type == 1) // 2D Taylor-Green.
    //{
    //   e_source = new LinearForm(&L2FESpace);
@@ -182,11 +183,9 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
    quad_data_is_current = false;
 }
 
-double M1Operator::GetVelocityStepEstimate(const Vector &S) 
-   const
+double M1Operator::GetVelocityStepEstimate(const Vector &S) const
 {
-   double velocity = GetTime();
-   
+   const double velocity = GetTime();
    UpdateQuadratureData(velocity, S);
 
    double glob_dt_est;
@@ -213,7 +212,7 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
    I1.MakeRef(&H1FESpace, *sptr, L2FESpace.GetVSize());
 
    Vector vector_vals(h1dofs_cnt * dim);
-   DenseMatrix Jpi(dim), Jinv(dim), I0stress(dim), I0stressJiT(dim), 
+   DenseMatrix Jpi(dim), Jinv(dim), I0stress(dim), I0stressJiT(dim),
                I1stress(dim), I1stressJiT(dim),
                vecvalMat(vector_vals.GetData(), h1dofs_cnt, dim);
    Array<int> L2dofs, H1dofs;
@@ -226,10 +225,10 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
    const int nbatches =  nzones / nzones_batch + 1; // +1 for the remainder.
    int nqp_batch = nqp * nzones_batch;
    double *gamma_b = new double[nqp_batch],
-   *rho_b = new double[nqp_batch],
-   *T_b   = new double[nqp_batch],
-   *mfp_b   = new double[nqp_batch],
-   *S_b   = new double[nqp_batch];
+          *rho_b   = new double[nqp_batch],
+          *T_b     = new double[nqp_batch],
+          *mfp_b   = new double[nqp_batch],
+          *S_b     = new double[nqp_batch];
    // Jacobians of reference->physical transformations for all quadrature
    // points in the batch.
    DenseTensor *Jpr_b = new DenseTensor[nqp_batch];
@@ -275,8 +274,8 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
       }
 
       // Batched computation of material properties.
-	  ComputeMaterialProperties(nqp_batch, velocity, gamma_b, rho_b, T_b, mfp_b,
-                                S_b);
+      ComputeMaterialProperties(nqp_batch, velocity, gamma_b, rho_b, T_b,
+                                mfp_b, S_b);
 
       z_id -= nzones_batch;
       for (int z = 0; z < nzones_batch; z++)
@@ -317,9 +316,6 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
                Jpr.CalcSingularvalue(dim-1) / (double) H1FESpace.GetOrder(0);
             const double inv_dt = mfp / h_min;
             quad_data.dt_est = min(quad_data.dt_est, cfl * (1.0 / inv_dt) );
-
-            //cout << "h_min/mfp: " << h_min << "/" << mfp << ", "
-			//     << quad_data.dt_est << endl << flush;
 
             // Quadrature data for partial assembly of the force operator.
             MultABt(I0stress, Jinv, I0stressJiT);

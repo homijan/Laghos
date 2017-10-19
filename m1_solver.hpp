@@ -39,17 +39,17 @@ class M1Operator : public LagrangianHydroOperator
 protected:
    ParGridFunction &x_gf, &T_gf;
 
-   void ComputeMaterialProperties(int nvalues, double v, const double gamma[], 
-                                  const double rho[], const double T[], 
+   void ComputeMaterialProperties(int nvalues, double v, const double gamma[],
+                                  const double rho[], const double T[],
                                   double mfp[], double S[]) const
    {
 	  for (int i = 0; i < nvalues; i++)
       {
-         // The quantity mfp = 1/nu ~ dx/dv ~ 1/dedx, 
-		 // the inverse of stopping power.
-		 // The collision frequency dependens on density and 
-		 // from the classical binary collisions nu ~ rho*v^-3
-		 // Scaling valid for Sedov.
+         // The quantity mfp = 1/nu ~ dx/dv ~ 1/dedx,
+         // the inverse of stopping power.
+         // The collision frequency dependens on density and
+         // from the classical binary collisions nu ~ rho*v^-3
+         // Scaling valid for Sedov.
 		 double coeff = 1e-1;
 		 mfp[i] = coeff*(v * v * v)/rho[i];
          //S[i]   = ComputeSource(rho[i], T[i], v);
@@ -69,11 +69,11 @@ protected:
 
 public:
    M1Operator(int size, ParFiniteElementSpace &h1_fes,
-              ParFiniteElementSpace &l2_fes, Array<int> &essential_tdofs, 
-              ParGridFunction &rho0, double cfl_, Coefficient *material_, 
-              ParGridFunction &x_gf_, ParGridFunction &T_gf_, bool pa, 
+              ParFiniteElementSpace &l2_fes, Array<int> &essential_tdofs,
+              ParGridFunction &rho0, double cfl_, Coefficient *material_,
+              ParGridFunction &x_gf_, ParGridFunction &T_gf_, bool pa,
               double cgt, int cgiter)
-      : LagrangianHydroOperator(size, h1_fes, l2_fes, essential_tdofs, rho0, 
+      : LagrangianHydroOperator(size, h1_fes, l2_fes, essential_tdofs, rho0,
         0, cfl_, material_, false, pa, cgt, cgiter), x_gf(x_gf_), T_gf(T_gf_) {}
 
    // Solve for dx_dt, dv_dt and de_dt.

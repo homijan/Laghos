@@ -52,6 +52,7 @@
 
 
 #include "laghos_solver.hpp"
+#include "m1_solver.hpp"
 #include <memory>
 #include <iostream>
 #include <fstream>
@@ -365,6 +366,87 @@ int main(int argc, char *argv[])
       visit_dc.Save();
    }
 
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
+   // The monolithic BlockVector stores unknown fields as:
+   // - 0 -> isotropic I0
+   // - 1 -> flux I1
+
+   Array<int> m1true_offset(3);
+   m1true_offset[0] = 0;
+   m1true_offset[1] = m1true_offset[0] + Vsize_l2;
+   m1true_offset[2] = m1true_offset[1] + Vsize_h1;
+   BlockVector m1S(m1true_offset);
+
+   // Define GridFunction objects for the position, velocity and specific
+   // internal energy.  There is no function for the density, as we can always
+   // compute the density values given the current mesh position, using the
+   // property of pointwise mass conservation.
+
+   ParGridFunction I0_gf, I1_gf;
+   I0_gf.MakeRef(&L2FESpace, m1S, m1true_offset[0]);
+   I1_gf.MakeRef(&H1FESpace, m1S, m1true_offset[1]);
+
+   M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho, cfl,
+                     material_pcf, x_gf, e_gf, p_assembly, cg_tol, cg_max_iter);
+
+   ODESolver *m1ode_solver = NULL;
+   m1ode_solver = new RK4Solver;
+   //m1ode_solver = new RK6Solver;
+   //m1ode_solver = new ForwardEulerSolver;
+   m1ode_solver->Init(m1oper);
+
+   m1oper.ResetVelocityStepEstimate();
+   m1oper.ResetQuadratureData();
+   double vmax = 1.0, vmin = 1e-1*vmax;
+   m1oper.SetTime(vmax);
+   double dvmin = m1oper.GetVelocityStepEstimate(m1S);
+   I0_gf = 1.0; I1_gf = 0.0;
+   int m1ti = 0;
+   double v = vmax;
+   double dv = -dvmin;
+   while (abs(dv) >= abs(dvmin))
+   {
+      m1ti++;
+      m1ode_solver->Step(m1S, v, dv);
+
+      double loc_minI0 = I0_gf.Min(), glob_minI0;
+      MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
+                       pmesh->GetComm());
+      double loc_maxI0 = I0_gf.Max(), glob_maxI0;
+      MPI_Allreduce(&loc_maxI0, &glob_maxI0, 1, MPI_DOUBLE, MPI_MAX,
+                       pmesh->GetComm());
+      double loc_minI1 = I1_gf.Min(), glob_minI1;
+      MPI_Allreduce(&loc_minI1, &glob_minI1, 1, MPI_DOUBLE, MPI_MIN,
+                       pmesh->GetComm());
+      double loc_maxI1 = I1_gf.Max(), glob_maxI1;
+      MPI_Allreduce(&loc_maxI1, &glob_maxI1, 1, MPI_DOUBLE, MPI_MAX,
+                       pmesh->GetComm());
+
+      m1oper.ResetVelocityStepEstimate();
+	  m1oper.ResetQuadratureData();
+      m1oper.SetTime(v);
+	  dv = - m1oper.GetVelocityStepEstimate(m1S);
+	  if (v + dv < vmin) { dv = vmin - v; }
+
+      if (mpi.Root())
+      {
+         cout << fixed;
+         cout << "group " << setw(5) << m1ti
+                 << ",\tv = " << setw(5) << setprecision(4) << v
+                 << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
+                 << "[min(I0), max(I0)] = [" << setprecision(17)
+                 << glob_minI0 << ", " << glob_maxI0 << "]" << endl
+                 << "[min(I1), max(I1)] = [" << setprecision(17)
+                 << glob_minI1 << ", " << glob_maxI1 << "]"
+                 << endl;
+      }
+   }
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
+
    // Perform time-integration (looping over the time iterations, ti, with a
    // time-step dt). The object oper is of type LagrangianHydroOperator that
    // defines the Mult() method that used by the time integrators.
@@ -488,6 +570,57 @@ int main(int argc, char *argv[])
             e_gf.Save(e_ofs);
             e_ofs.close();
          }
+
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
+         m1oper.ResetVelocityStepEstimate();
+         m1oper.ResetQuadratureData();
+         m1oper.SetTime(vmax);
+         double dvmin = m1oper.GetVelocityStepEstimate(m1S);
+         I0_gf = 1.0; I1_gf = 0.0;
+         int m1ti = 0;
+         double v = vmax;
+         double dv = -dvmin;
+		 while (abs(dv) >= abs(dvmin))
+         {
+            m1ti++;
+            m1ode_solver->Step(m1S, v, dv);
+            double loc_minI0 = I0_gf.Min(), glob_minI0;
+            MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
+                          pmesh->GetComm());
+            double loc_maxI0 = I0_gf.Max(), glob_maxI0;
+            MPI_Allreduce(&loc_maxI0, &glob_maxI0, 1, MPI_DOUBLE, MPI_MAX,
+                          pmesh->GetComm());
+            double loc_minI1 = I1_gf.Min(), glob_minI1;
+            MPI_Allreduce(&loc_minI1, &glob_minI1, 1, MPI_DOUBLE, MPI_MIN,
+                          pmesh->GetComm());
+            double loc_maxI1 = I1_gf.Max(), glob_maxI1;
+            MPI_Allreduce(&loc_maxI1, &glob_maxI1, 1, MPI_DOUBLE, MPI_MAX,
+                          pmesh->GetComm());
+
+            m1oper.ResetVelocityStepEstimate();
+			m1oper.ResetQuadratureData();
+			m1oper.SetTime(v);
+			dv = - m1oper.GetVelocityStepEstimate(m1S);
+            if (v + dv < vmin) { dv = vmin - v; }
+
+            if (mpi.Root())
+            {
+               cout << fixed;
+               cout << "group " << setw(5) << m1ti
+               << ",\tv = " << setw(5) << setprecision(4) << v
+               << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
+               << "[min(I0), max(I0)] = [" << setprecision(17)
+               << glob_minI0 << ", " << glob_maxI0 << "]" << endl
+               << "[min(I1), max(I1)] = [" << setprecision(17)
+               << glob_minI1 << ", " << glob_maxI1 << "]"
+               << endl;
+            }
+         }
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
       }
    }
 
@@ -498,7 +631,10 @@ int main(int argc, char *argv[])
       case 4: steps *= 4; break;
       case 6: steps *= 6;
    }
+   if (mpi.Root()) { cout << "Hydrodynamics kernel timer:" << endl << flush; }
    oper.PrintTimingData(mpi.Root(), steps);
+   if (mpi.Root()) { cout << "M1 kernel timer:" << endl << flush; }
+   m1oper.PrintTimingData(mpi.Root(), steps);
 
    if (visualization)
    {
@@ -510,6 +646,8 @@ int main(int argc, char *argv[])
    delete ode_solver;
    delete pmesh;
    delete material_pcf;
+   delete tensors1D;
+   delete m1ode_solver;
 
    return 0;
 }

@@ -176,10 +176,13 @@ LagrangianHydroOperator::LagrangianHydroOperator(int size,
 
    if (p_assembly)
    {
-      tensors1D = new Tensors1D(H1FESpace.GetFE(0)->GetOrder(),
-                                L2FESpace.GetFE(0)->GetOrder(),
-                                int(floor(0.7 + pow(nqp, 1.0 / dim))));
-      evaluator = new FastEvaluator(H1FESpace);
+      if (tensors1D == NULL)
+      {
+	     tensors1D = new Tensors1D(H1FESpace.GetFE(0)->GetOrder(),
+                                   L2FESpace.GetFE(0)->GetOrder(),
+                                   int(floor(0.7 + pow(nqp, 1.0 / dim))));
+	  }
+      if (evaluator == NULL) { evaluator = new FastEvaluator(H1FESpace); }
    }
 
    locCG.SetOperator(locEMassPA);
@@ -438,11 +441,6 @@ void LagrangianHydroOperator::PrintTimingData(bool IamRoot, int steps)
       cout << "Major kernels total rate (megadofs x time steps / second): "
            << 1e-6 * H1FESpace.GlobalTrueVSize() * steps / rt_max[4] << endl;
    }
-}
-
-LagrangianHydroOperator::~LagrangianHydroOperator()
-{
-   delete tensors1D;
 }
 
 void LagrangianHydroOperator::UpdateQuadratureData(const Vector &S) const

@@ -151,7 +151,7 @@ public:
 
    void PrintTimingData(bool IamRoot, int steps);
 
-   ~LagrangianHydroOperator();
+   ~LagrangianHydroOperator() {}
 };
 
 class TaylorCoefficient : public Coefficient
