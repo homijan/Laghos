@@ -357,9 +357,10 @@ int main(int argc, char *argv[])
                      cg_max_iter);
 
    ODESolver *m1ode_solver = NULL;
-   m1ode_solver = new RK4Solver;
-   //m1ode_solver = new RK6Solver;
    //m1ode_solver = new ForwardEulerSolver;
+   m1ode_solver = new RK2Solver(0.5);
+   //m1ode_solver = new RK4Solver;
+   //m1ode_solver = new RK6Solver;
    m1ode_solver->Init(m1oper);
 
    // Static coefficient defined in m1_solver.hpp.
@@ -373,7 +374,7 @@ int main(int argc, char *argv[])
    mspInv.SetTmax(glob_Tmax);
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
-   double vmax = 1.0, vmin = vmax / 6.0;
+   double vmax = 1.0, vmin = 0.01 * vmax;
    m1oper.SetTime(vmax);
    double dvmin = m1oper.GetVelocityStepEstimate(m1S);
    I0_gf = 0.0; I1_gf = 0.0;

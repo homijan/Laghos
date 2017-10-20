@@ -176,7 +176,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
       Force.MultTranspose(I1, I0_rhs);
       timer.sw_force.Stop();
       timer.dof_tstep += L2FESpace.GlobalTrueVSize();
-      if (I0_source) { I0_rhs += *I0_source; }
+      //if (I0_source) { I0_rhs += *I0_source; }
       for (int z = 0; z < nzones; z++)
       {
          L2FESpace.GetElementDofs(z, l2dofs);
@@ -188,7 +188,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
          dI0.SetSubVector(l2dofs, loc_dI0);
       }
    }
-   delete I0_source;
+   //delete I0_source;
 
    quad_data_is_current = false;
 }
