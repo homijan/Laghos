@@ -140,16 +140,7 @@ public:
    M1MeanStoppingPowerInverse(ParGridFunction &rho_, ParGridFunction &Te_,
                        ParGridFunction &v_, Coefficient *material_, EOS *eos_)
       : M1HydroCoefficient(rho_, Te_, v_, material_, eos_) {}
-   double Eval(ElementTransformation &T, const IntegrationPoint &ip)
-   {
-      double rho = rho_gf.GetValue(T.ElementNo, ip);
-      double Te = Te_gf.GetValue(T.ElementNo, ip);
-      double a = 5.0; // TODO, here enters plasma collisions. 
-	  double nu_scaled = a * rho / pow(alphavT, 4.0) / pow(velocity, 3.0);
-	  // M1 requires the inverse of mean stopping power, 
-	  // further multiplied by rho (consequence of numerical scheme). 
-	  return rho / nu_scaled;
-   }
+   double Eval(ElementTransformation &T, const IntegrationPoint &ip);
 };
 
 // M1 source coefficient.
@@ -160,17 +151,10 @@ public:
    M1I0Source(ParGridFunction &rho_, ParGridFunction &Te_, ParGridFunction &v_, 
               Coefficient *material_, EOS *eos_)
       : M1HydroCoefficient(rho_, Te_, v_, material_, eos_) {}
-   double Eval(ElementTransformation &T, const IntegrationPoint &ip)
-   {
-      double rho = rho_gf.GetValue(T.ElementNo, ip);
-      double Te = Te_gf.GetValue(T.ElementNo, ip);
-      
-      return rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT - 
-         alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) * 
-         exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) * 
-             pow(velocity, 2.0));
-   }
+   double Eval(ElementTransformation &T, const IntegrationPoint &ip);
 };
+
+extern double a0;
 
 } // namespace hydrodynamics
 

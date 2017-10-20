@@ -345,13 +345,14 @@ int main(int argc, char *argv[])
    I0_gf.MakeRef(&L2FESpace, m1S, m1true_offset[0]);
    I1_gf.MakeRef(&H1FESpace, m1S, m1true_offset[1]);
 
+   double m1cfl = 0.1;
    double kB = 1.0, me = 1.0;
    EOS eos(kB, me);
    M1MeanStoppingPowerInverse mspInv(rho_gf, e_gf, v_gf, material_pcf, &eos);
    M1HydroCoefficient *mspInv_pcf = &mspInv;
    M1I0Source sourceI0(rho_gf, e_gf, v_gf, material_pcf, &eos);
    M1HydroCoefficient *sourceI0_pcf = &sourceI0;
-   M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho_gf, cfl,
+   M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho_gf, m1cfl,
                      mspInv_pcf, sourceI0_pcf, x_gf, e_gf, p_assembly, cg_tol,
                      cg_max_iter);
 
@@ -361,15 +362,21 @@ int main(int argc, char *argv[])
    //m1ode_solver = new ForwardEulerSolver;
    m1ode_solver->Init(m1oper);
 
+   // Static coefficient defined in m1_solver.hpp.
+   a0 = 3e3;
+   double vTmultiple = 6.0;
    oper.ComputeDensity(rho_gf);
-   mspInv.SetThermalVelocityMultiple(1.0);
-   mspInv.SetTmax(1.0);
+   mspInv.SetThermalVelocityMultiple(vTmultiple);
+   double loc_Tmax = e_gf.Max(), glob_Tmax;
+   MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
+                 pmesh->GetComm());
+   mspInv.SetTmax(glob_Tmax);
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
-   double vmax = 1.0, vmin = 1e-1*vmax;
+   double vmax = 1.0, vmin = vmax / 6.0;
    m1oper.SetTime(vmax);
    double dvmin = m1oper.GetVelocityStepEstimate(m1S);
-   I0_gf = 1.0; I1_gf = 0.0;
+   I0_gf = 0.0; I1_gf = 0.0;
    int m1ti = 0;
    double v = vmax;
    double dv = -dvmin;
@@ -585,13 +592,16 @@ int main(int argc, char *argv[])
 ///// M1 nonlocal solver //////////////////////////////////////
 ///////////////////////////////////////////////////////////////
          oper.ComputeDensity(rho_gf);
-         mspInv.SetThermalVelocityMultiple(1.0);
-         mspInv.SetTmax(1.0);
+         mspInv.SetThermalVelocityMultiple(vTmultiple);
+         double loc_Tmax = e_gf.Max(), glob_Tmax;
+         MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
+                       pmesh->GetComm());
+         mspInv.SetTmax(glob_Tmax);
          m1oper.ResetVelocityStepEstimate();
          m1oper.ResetQuadratureData();
          m1oper.SetTime(vmax);
          double dvmin = m1oper.GetVelocityStepEstimate(m1S);
-         I0_gf = 1.0; I1_gf = 0.0;
+         I0_gf = 1e-5; I1_gf = 0.0;
          int m1ti = 0;
          double v = vmax;
          double dv = -dvmin;

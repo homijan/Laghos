@@ -34,6 +34,10 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 
    UpdateQuadratureData(velocity, S);
 
+   sourceI0_pcf->SetVelocity(velocity);
+   ParGridFunction I0source(&L2FESpace);
+   I0source.ProjectCoefficient(*sourceI0_pcf);
+
    // The monolithic BlockVector stores the unknown fields as follows:
    // - isotropic I0 (energy density)
    // - anisotropic I1 (flux density)
@@ -128,7 +132,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
    }
 
    // Solve for energy, assemble the energy source if such exists.
-   LinearForm *I0_source = NULL;
+   //LinearForm *I0_source = NULL;
    // TODO I0_source should be evaluated based on precomputed quadrature points.
    //if (source_type == 1) // 2D Taylor-Green.
    //{
@@ -139,7 +143,8 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
    //   e_source->Assemble();
    //}
    Array<int> l2dofs;
-   Vector I0_rhs(VsizeL2), loc_rhs(l2dofs_cnt), loc_dI0(l2dofs_cnt);
+   Vector I0_rhs(VsizeL2), loc_rhs(l2dofs_cnt), loc_I0source(l2dofs_cnt),
+          loc_MeMultI0source(l2dofs_cnt), loc_dI0(l2dofs_cnt);
    if (p_assembly)
    {
       timer.sw_force.Start();
@@ -147,12 +152,17 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
       timer.sw_force.Stop();
       timer.dof_tstep += L2FESpace.GlobalTrueVSize();
 
-      if (I0_source) { I0_rhs += *I0_source; }
+      //if (I0_source) { I0_rhs += *I0_source; }
       for (int z = 0; z < nzones; z++)
       {
          L2FESpace.GetElementDofs(z, l2dofs);
          I0_rhs.GetSubVector(l2dofs, loc_rhs);
          locEMassPA.SetZoneId(z);
+         //
+         I0source.GetSubVector(l2dofs, loc_I0source);
+         locEMassPA.Mult(loc_I0source, loc_MeMultI0source);
+         loc_rhs += loc_MeMultI0source;
+         //
          timer.sw_cgL2.Start();
          locCG.Mult(loc_rhs, loc_dI0);
          timer.sw_cgL2.Stop();
@@ -335,6 +345,31 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
 
    timer.sw_qdata.Stop();
    timer.quad_tstep += nzones * nqp;
+}
+
+double a0 = 5e3;
+
+double M1MeanStoppingPowerInverse::Eval(ElementTransformation &T,
+                                        const IntegrationPoint &ip)
+{
+   double rho = rho_gf.GetValue(T.ElementNo, ip);
+   double Te = Te_gf.GetValue(T.ElementNo, ip);
+   double a = a0 * (Tmax * Tmax); //1e8; // The plasma collision model.
+   double nu_scaled = a * rho / pow(alphavT, 4.0) / pow(velocity, 3.0);
+   // M1 requires the inverse of the mean stopping power,
+   // further multiplied by rho (compensates constant mass matrices).
+   return rho / nu_scaled;
+}
+
+double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
+{
+   double rho = rho_gf.GetValue(T.ElementNo, ip);
+   double Te = max(1e-6, Te_gf.GetValue(T.ElementNo, ip));
+
+   return -1e-0 * rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT -
+      alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) *
+      exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
+      pow(velocity, 2.0));
 }
 
 } // namespace hydrodynamics
