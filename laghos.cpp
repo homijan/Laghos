@@ -284,13 +284,13 @@ int main(int argc, char *argv[])
    // is to get a high-order representation of the initial condition. Note that
    // this density is a temporary function and it will not be updated during the
    // time evolution.
-   ParGridFunction rho(&L2FESpace);
+   ParGridFunction rho_gf(&L2FESpace);
    FunctionCoefficient rho_coeff(hydrodynamics::rho0);
    L2_FECollection l2_fec(order_e, pmesh->Dimension());
    ParFiniteElementSpace l2_fes(pmesh, &l2_fec);
    ParGridFunction l2_rho(&l2_fes), l2_e(&l2_fes);
    l2_rho.ProjectCoefficient(rho_coeff);
-   rho.ProjectGridFunction(l2_rho);
+   rho_gf.ProjectGridFunction(l2_rho);
    if (problem == 1)
    {
       // For the Sedov test, we use a delta function at the origin.
@@ -320,58 +320,15 @@ int main(int argc, char *argv[])
    }
 
    LagrangianHydroOperator oper(S.Size(), H1FESpace, L2FESpace,
-                                ess_tdofs, rho, source, cfl, material_pcf,
+                                ess_tdofs, rho_gf, source, cfl, material_pcf,
                                 visc, p_assembly, cg_tol, cg_max_iter);
-
-   socketstream vis_rho, vis_v, vis_e;
-   char vishost[] = "localhost";
-   int  visport   = 19916;
-
-   ParGridFunction rho_gf;
-   if (visualization || visit) { oper.ComputeDensity(rho_gf); }
-
-   if (visualization)
-   {
-      // Make sure all MPI ranks have sent their 'v' solution before initiating
-      // another set of GLVis connections (one from each rank):
-      MPI_Barrier(pmesh->GetComm());
-
-      vis_rho.precision(8);
-      vis_v.precision(8);
-      vis_e.precision(8);
-
-      int Wx = 0, Wy = 0; // window position
-      const int Ww = 350, Wh = 350; // window size
-      int offx = Ww+10; // window offsets
-
-      VisualizeField(vis_rho, vishost, visport, rho_gf,
-                     "Density", Wx, Wy, Ww, Wh);
-      Wx += offx;
-      VisualizeField(vis_v, vishost, visport, v_gf,
-                     "Velocity", Wx, Wy, Ww, Wh);
-      Wx += offx;
-      VisualizeField(vis_e, vishost, visport, e_gf,
-                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
-   }
-
-   // Save data for VisIt visualization
-   VisItDataCollection visit_dc(basename, pmesh);
-   if (visit)
-   {
-      visit_dc.RegisterField("Density",  &rho_gf);
-      visit_dc.RegisterField("Velocity", &v_gf);
-      visit_dc.RegisterField("Specific Internal Energy", &e_gf);
-      visit_dc.SetCycle(0);
-      visit_dc.SetTime(0.0);
-      visit_dc.Save();
-   }
 
 ///////////////////////////////////////////////////////////////
 ///// M1 nonlocal solver //////////////////////////////////////
 ///////////////////////////////////////////////////////////////
    // The monolithic BlockVector stores unknown fields as:
-   // - 0 -> isotropic I0
-   // - 1 -> flux I1
+   // - 0 -> isotropic I0 (energy density)
+   // - 1 -> anisotropic I1 (flux density)
 
    Array<int> m1true_offset(3);
    m1true_offset[0] = 0;
@@ -388,8 +345,15 @@ int main(int argc, char *argv[])
    I0_gf.MakeRef(&L2FESpace, m1S, m1true_offset[0]);
    I1_gf.MakeRef(&H1FESpace, m1S, m1true_offset[1]);
 
-   M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho, cfl,
-                     material_pcf, x_gf, e_gf, p_assembly, cg_tol, cg_max_iter);
+   double kB = 1.0, me = 1.0;
+   EOS eos(kB, me);
+   M1MeanStoppingPowerInverse mspInv(rho_gf, e_gf, v_gf, material_pcf, &eos);
+   M1HydroCoefficient *mspInv_pcf = &mspInv;
+   M1I0Source sourceI0(rho_gf, e_gf, v_gf, material_pcf, &eos);
+   M1HydroCoefficient *sourceI0_pcf = &sourceI0;
+   M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho_gf, cfl,
+                     mspInv_pcf, sourceI0_pcf, x_gf, e_gf, p_assembly, cg_tol,
+                     cg_max_iter);
 
    ODESolver *m1ode_solver = NULL;
    m1ode_solver = new RK4Solver;
@@ -397,6 +361,9 @@ int main(int argc, char *argv[])
    //m1ode_solver = new ForwardEulerSolver;
    m1ode_solver->Init(m1oper);
 
+   oper.ComputeDensity(rho_gf);
+   mspInv.SetThermalVelocityMultiple(1.0);
+   mspInv.SetTmax(1.0);
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
    double vmax = 1.0, vmin = 1e-1*vmax;
@@ -437,15 +404,57 @@ int main(int argc, char *argv[])
                  << ",\tv = " << setw(5) << setprecision(4) << v
                  << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
                  << "[min(I0), max(I0)] = [" << setprecision(17)
-                 << glob_minI0 << ", " << glob_maxI0 << "]" << endl
+                 << glob_minI0 << ",\t" << glob_maxI0 << "]" << endl
                  << "[min(I1), max(I1)] = [" << setprecision(17)
-                 << glob_minI1 << ", " << glob_maxI1 << "]"
+                 << glob_minI1 << ",\t" << glob_maxI1 << "]"
                  << endl;
       }
    }
 ///////////////////////////////////////////////////////////////
 ///// M1 nonlocal solver //////////////////////////////////////
 ///////////////////////////////////////////////////////////////
+
+   socketstream vis_rho, vis_v, vis_e;
+   char vishost[] = "localhost";
+   int  visport   = 19916;
+
+   if (visualization || visit) { oper.ComputeDensity(rho_gf); }
+
+   if (visualization)
+   {
+      // Make sure all MPI ranks have sent their 'v' solution before initiating
+      // another set of GLVis connections (one from each rank):
+      MPI_Barrier(pmesh->GetComm());
+
+      vis_rho.precision(8);
+      vis_v.precision(8);
+      vis_e.precision(8);
+
+      int Wx = 0, Wy = 0; // window position
+      const int Ww = 350, Wh = 350; // window size
+      int offx = Ww+10; // window offsets
+
+      VisualizeField(vis_rho, vishost, visport, rho_gf,
+                     "Density", Wx, Wy, Ww, Wh);
+      Wx += offx;
+      VisualizeField(vis_v, vishost, visport, v_gf,
+                     "Velocity", Wx, Wy, Ww, Wh);
+      Wx += offx;
+      VisualizeField(vis_e, vishost, visport, e_gf,
+                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
+   }
+
+   // Save data for VisIt visualization
+   VisItDataCollection visit_dc(basename, pmesh);
+   if (visit)
+   {
+      visit_dc.RegisterField("Density",  &rho_gf);
+      visit_dc.RegisterField("Velocity", &v_gf);
+      visit_dc.RegisterField("Specific Internal Energy", &e_gf);
+      visit_dc.SetCycle(0);
+      visit_dc.SetTime(0.0);
+      visit_dc.Save();
+   }
 
    // Perform time-integration (looping over the time iterations, ti, with a
    // time-step dt). The object oper is of type LagrangianHydroOperator that
@@ -524,9 +533,10 @@ int main(int argc, char *argv[])
                            "Density", Wx, Wy, Ww, Wh);
             Wx += offx;
             VisualizeField(vis_v, vishost, visport,
-                           v_gf, "Velocity", Wx, Wy, Ww, Wh);
+                           I1_gf, "Velocity", Wx, Wy, Ww, Wh);
+						   //v_gf, "Velocity", Wx, Wy, Ww, Wh);
             Wx += offx;
-            VisualizeField(vis_e, vishost, visport, e_gf,
+            VisualizeField(vis_e, vishost, visport, I0_gf, //e_gf,
                            "Specific Internal Energy", Wx, Wy, Ww,Wh);
             Wx += offx;
          }
@@ -574,6 +584,9 @@ int main(int argc, char *argv[])
 ///////////////////////////////////////////////////////////////
 ///// M1 nonlocal solver //////////////////////////////////////
 ///////////////////////////////////////////////////////////////
+         oper.ComputeDensity(rho_gf);
+         mspInv.SetThermalVelocityMultiple(1.0);
+         mspInv.SetTmax(1.0);
          m1oper.ResetVelocityStepEstimate();
          m1oper.ResetQuadratureData();
          m1oper.SetTime(vmax);
@@ -612,9 +625,9 @@ int main(int argc, char *argv[])
                << ",\tv = " << setw(5) << setprecision(4) << v
                << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
                << "[min(I0), max(I0)] = [" << setprecision(17)
-               << glob_minI0 << ", " << glob_maxI0 << "]" << endl
+               << glob_minI0 << ",\t" << glob_maxI0 << "]" << endl
                << "[min(I1), max(I1)] = [" << setprecision(17)
-               << glob_minI1 << ", " << glob_maxI1 << "]"
+               << glob_minI1 << ",\t" << glob_maxI1 << "]"
                << endl;
             }
          }

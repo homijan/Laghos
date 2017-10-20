@@ -30,13 +30,13 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 {
    dS_dt = 0.0;
 
-   const double velocity = GetTime();
+   const double velocity = GetTime(); 
 
    UpdateQuadratureData(velocity, S);
 
    // The monolithic BlockVector stores the unknown fields as follows:
-   // - isotropic I0
-   // - anisotropic flux I1
+   // - isotropic I0 (energy density)
+   // - anisotropic I1 (flux density)
 
    const int VsizeL2 = L2FESpace.GetVSize();
    const int VsizeH1 = H1FESpace.GetVSize();
@@ -204,6 +204,7 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
    if (quad_data_is_current) { return; }
    timer.sw_qdata.Start();
 
+   mspInv_pcf->SetVelocity(velocity);
    const int nqp = integ_rule.GetNPoints();
 
    ParGridFunction I0, I1;
@@ -224,11 +225,7 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
    int nzones_batch = 3;
    const int nbatches =  nzones / nzones_batch + 1; // +1 for the remainder.
    int nqp_batch = nqp * nzones_batch;
-   double *gamma_b = new double[nqp_batch],
-          *rho_b   = new double[nqp_batch],
-          *T_b     = new double[nqp_batch],
-          *mfp_b   = new double[nqp_batch],
-          *S_b     = new double[nqp_batch];
+   double *mspInv_b = new double[nqp_batch];
    // Jacobians of reference->physical transformations for all quadrature
    // points in the batch.
    DenseTensor *Jpr_b = new DenseTensor[nqp_batch];
@@ -243,7 +240,6 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
          nqp_batch    = nqp * nzones_batch;
       }
 
-      double min_detJ = numeric_limits<double>::infinity();
       for (int z = 0; z < nzones_batch; z++)
       {
          ElementTransformation *T = H1FESpace.GetElementTransformation(z_id);
@@ -261,21 +257,12 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
             const IntegrationPoint &ip = integ_rule.IntPoint(q);
             T->SetIntPoint(&ip);
             if (!p_assembly) { Jpr_b[z](q) = T->Jacobian(); }
-            const double detJ = Jpr_b[z](q).Det();
-            min_detJ = min(min_detJ, detJ);
 
             const int idx = z * nqp + q;
-            if (material_pcf == NULL) { gamma_b[idx] = 5./3.; } // Ideal gas.
-            else { gamma_b[idx] = material_pcf->Eval(*T, ip); }
-            rho_b[idx] = quad_data.rho0DetJ0w(z_id*nqp + q) / detJ / ip.weight;
-            T_b[idx]   = max(0.0, T_gf.GetValue(z_id, ip));
+            mspInv_b[idx] = mspInv_pcf->Eval(*T, ip);
          }
          ++z_id;
       }
-
-      // Batched computation of material properties.
-      ComputeMaterialProperties(nqp_batch, velocity, gamma_b, rho_b, T_b,
-                                mfp_b, S_b);
 
       z_id -= nzones_batch;
       for (int z = 0; z < nzones_batch; z++)
@@ -293,20 +280,8 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
             // not to store the Jacobians for all batched quadrature points.
             const DenseMatrix &Jpr = Jpr_b[z](q);
             CalcInverse(Jpr, Jinv);
-            const double detJ = Jpr.Det(), rho = rho_b[z*nqp + q],
-                         mfp = mfp_b[z*nqp + q];
-
-            I0stress = 0.0;
-            I1stress = 0.0;
-			for (int d = 0; d < dim; d++)
-            {
-               I0stress(d, d) = mfp;
-               I1stress(d, d) = mfp/3.0; // P1 closure.
-            }
-
-/*
-               I1stress.Add(visc_coeff, sgrad_v);
-*/
+            const double detJ = Jpr.Det();
+            double mspInv = mspInv_b[z*nqp + q];
 
             // Time step estimate at the point. Here the more relevant length
             // scale is related to the actual mesh deformation; we use the min
@@ -314,8 +289,26 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
             // time step estimate should be aware of the presence of shocks.
             const double h_min =
                Jpr.CalcSingularvalue(dim-1) / (double) H1FESpace.GetOrder(0);
-            const double inv_dt = mfp / h_min;
+            double inv_dt = mspInv / h_min;
+            //if (M1_dvmax * inv_dt / cfl < 1.0) { inv_dt = cfl / M1_dvmax; }
+            //if (M1_dvmin * inv_dt > 1.0)
+            //{
+            //   inv_dt = 1.0 / M1_dvmin;
+            //   mspInv = inv_dt * h_min;
+            //}
             quad_data.dt_est = min(quad_data.dt_est, cfl * (1.0 / inv_dt) );
+
+            I0stress = 0.0;
+            I1stress = 0.0;
+			for (int d = 0; d < dim; d++)
+            {
+               I0stress(d, d) = mspInv;
+               I1stress(d, d) = mspInv/3.0; // P1 closure.
+            }
+
+/*
+               I1stress.Add(visc_coeff, sgrad_v);
+*/
 
             // Quadrature data for partial assembly of the force operator.
             MultABt(I0stress, Jinv, I0stressJiT);
@@ -336,11 +329,7 @@ void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
          ++z_id;
       }
    }
-   delete [] gamma_b;
-   delete [] rho_b;
-   delete [] T_b;
-   delete [] mfp_b;
-   delete [] S_b;
+   delete [] mspInv_b;
    delete [] Jpr_b;
    quad_data_is_current = true;
 

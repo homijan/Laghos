@@ -32,49 +32,32 @@ namespace mfem
 namespace hydrodynamics
 {
 
+class M1HydroCoefficient;
+
 // Given a solutions state (I0, I1), this class performs all necessary
 // computations to evaluate the new slopes (dI0_dt, dI1_dt).
 class M1Operator : public LagrangianHydroOperator
 {
 protected:
-   ParGridFunction &x_gf, &T_gf;
-
-   void ComputeMaterialProperties(int nvalues, double v, const double gamma[],
-                                  const double rho[], const double T[],
-                                  double mfp[], double S[]) const
-   {
-	  for (int i = 0; i < nvalues; i++)
-      {
-         // The quantity mfp = 1/nu ~ dx/dv ~ 1/dedx,
-         // the inverse of stopping power.
-         // The collision frequency dependens on density and
-         // from the classical binary collisions nu ~ rho*v^-3
-         // Scaling valid for Sedov.
-		 double coeff = 1e-1;
-		 mfp[i] = coeff*(v * v * v)/rho[i];
-         //S[i]   = ComputeSource(rho[i], T[i], v);
-         // Compatible with the constant mass matrices.
-         mfp[i] *= rho[i];
-         S[i] *= rho[i];
-      }
-   }
-
-   double ComputeSource(double rho, double T, double v) const
-   {
-      // In the case of AWBS we consider dfM/dv
-	  return v*rho*exp(-v*v/T);
-   }
+   // TODO M1_dvmin does not work, because of its local nature. 
+   // M1_dvmax does not seem to have an important effect.
+   double M1_dvmin, M1_dvmax;
+   // The grid function is necessary for velocity step estimation. 
+   ParGridFunction &x_gf;
+   // Velocity dependent coefficients providing physics.
+   M1HydroCoefficient *mspInv_pcf, *sourceI0_pcf;
 
    void UpdateQuadratureData(double velocity, const Vector &S) const;
 
 public:
    M1Operator(int size, ParFiniteElementSpace &h1_fes,
               ParFiniteElementSpace &l2_fes, Array<int> &essential_tdofs,
-              ParGridFunction &rho0, double cfl_, Coefficient *material_,
-              ParGridFunction &x_gf_, ParGridFunction &T_gf_, bool pa,
-              double cgt, int cgiter)
+              ParGridFunction &rho0, double cfl_, M1HydroCoefficient *mspInv_,
+              M1HydroCoefficient *sourceI0_, ParGridFunction &x_gf_, 
+              ParGridFunction &T_gf_, bool pa, double cgt, int cgiter)
       : LagrangianHydroOperator(size, h1_fes, l2_fes, essential_tdofs, rho0,
-        0, cfl_, material_, false, pa, cgt, cgiter), x_gf(x_gf_), T_gf(T_gf_) {}
+                                0, cfl_, NULL, false, pa, cgt, cgiter), 
+         mspInv_pcf(mspInv_), sourceI0_pcf(sourceI0_), x_gf(x_gf_) {}
 
    // Solve for dx_dt, dv_dt and de_dt.
    virtual void Mult(const Vector &S, Vector &dS_dt) const;
@@ -85,6 +68,108 @@ public:
    void ResetQuadratureData() const { quad_data_is_current = false; }
 
    ~M1Operator() {}
+};
+
+// Generic hydro equation of state (EOS) class,
+// providing any physics related evaluation needed in NTH.
+class EOS
+{
+protected:
+   // Fundamental constants of nature.
+   double kB, c, hbar, G;
+   // Corresponding masses of electron and proton.
+   double me;
+public:
+   EOS(double kB_ = 1.0, double me_ = 1.0, double mi_ = 1.0, double c_ = 1.0, 
+       double hbar_ = 1.0, double G_ = 1.0)
+      { kB = kB_, c = c_, hbar = hbar_, G = G_; me = me_; }
+   double vTe(double Te) { return sqrt(kB * Te / me); }
+};
+
+// Generic hydro M1 coefficient.
+class HydroCoefficient : public Coefficient
+{
+protected:
+   // Fluid quantities used in calculations of physics.
+   ParGridFunction &rho_gf, &Te_gf, &v_gf;
+   // Space dependent material coefficient.
+   Coefficient *material_pcf;
+   // General equation of state.
+   EOS *eos;
+public:
+   HydroCoefficient(ParGridFunction &rho_, ParGridFunction &Te_,
+                    ParGridFunction &v_, Coefficient *material_, EOS *eos_)
+      : rho_gf(rho_), Te_gf(Te_), v_gf(v_), material_pcf(material_), eos(eos_) 
+	  {}
+   virtual double Eval(ElementTransformation &T,
+      const IntegrationPoint &ip) = 0;
+
+   virtual ~HydroCoefficient() {};
+};
+
+// M1 hydro coefficient.
+class M1HydroCoefficient : public HydroCoefficient
+{
+   void SetVelocityScale(double alpha_, double Tmax)
+      { alphavT = alpha * eos->vTe(Tmax); }
+protected:
+   // Velocity is always scaled wit respect to maximum thermal velocity 
+   // (its multiple) so it is in (0, 1)
+   double alpha, Tmax, alphavT;
+   // Current particle velocity from the velocity spectra. 
+   double velocity;
+public:
+   M1HydroCoefficient(ParGridFunction &rho_, ParGridFunction &T_,
+                      ParGridFunction &v_, Coefficient *material_, EOS *eos_)
+      : HydroCoefficient(rho_, T_, v_, material_, eos_)
+	  { alpha = 1.0; Tmax = 1.0; SetVelocityScale(alpha, Tmax); }
+   virtual double Eval(ElementTransformation &T,
+      const IntegrationPoint &ip) = 0;
+   void SetVelocity(double v_) { velocity = v_; }
+   void SetThermalVelocityMultiple(double alpha_)
+      { alpha = alpha_; SetVelocityScale(alpha, Tmax); }
+   void SetTmax(double Tmax_)
+      { Tmax = Tmax_; SetVelocityScale(alpha, Tmax); }
+};
+
+// M1 mean-stopping-power coefficient.
+class M1MeanStoppingPowerInverse : public M1HydroCoefficient
+{
+protected:
+public:
+   M1MeanStoppingPowerInverse(ParGridFunction &rho_, ParGridFunction &Te_,
+                       ParGridFunction &v_, Coefficient *material_, EOS *eos_)
+      : M1HydroCoefficient(rho_, Te_, v_, material_, eos_) {}
+   double Eval(ElementTransformation &T, const IntegrationPoint &ip)
+   {
+      double rho = rho_gf.GetValue(T.ElementNo, ip);
+      double Te = Te_gf.GetValue(T.ElementNo, ip);
+      double a = 5.0; // TODO, here enters plasma collisions. 
+	  double nu_scaled = a * rho / pow(alphavT, 4.0) / pow(velocity, 3.0);
+	  // M1 requires the inverse of mean stopping power, 
+	  // further multiplied by rho (consequence of numerical scheme). 
+	  return rho / nu_scaled;
+   }
+};
+
+// M1 source coefficient.
+class M1I0Source : public M1HydroCoefficient
+{
+protected:
+public:
+   M1I0Source(ParGridFunction &rho_, ParGridFunction &Te_, ParGridFunction &v_, 
+              Coefficient *material_, EOS *eos_)
+      : M1HydroCoefficient(rho_, Te_, v_, material_, eos_) {}
+   double Eval(ElementTransformation &T, const IntegrationPoint &ip)
+   {
+      double rho = rho_gf.GetValue(T.ElementNo, ip);
+      double Te = Te_gf.GetValue(T.ElementNo, ip);
+      
+      return rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT - 
+         alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) * 
+         exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) * 
+             pow(velocity, 2.0));
+   }
 };
 
 } // namespace hydrodynamics
