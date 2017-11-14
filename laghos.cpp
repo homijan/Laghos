@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
    int max_tsteps = -1;
    bool p_assembly = true;
    bool visualization = false;
-   int vis_steps = 5;
+   int vis_steps = 10;
    bool visit = false;
    bool gfprint = false;
    const char *basename = "results/Laghos";
@@ -364,7 +364,7 @@ int main(int argc, char *argv[])
    m1ode_solver->Init(m1oper);
 
    // Static coefficient defined in m1_solver.hpp.
-   a0 = 3e3;
+   a0 = 2e3;
    double vTmultiple = 6.0;
    oper.ComputeDensity(rho_gf);
    mspInv.SetThermalVelocityMultiple(vTmultiple);
@@ -374,7 +374,7 @@ int main(int argc, char *argv[])
    mspInv.SetTmax(glob_Tmax);
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
-   double vmax = 1.0, vmin = 0.01 * vmax;
+   double vmax = 1.0, vmin = 0.666 * vmax;
    m1oper.SetTime(vmax);
    double dvmin = m1oper.GetVelocityStepEstimate(m1S);
    I0_gf = 0.0; I1_gf = 0.0;

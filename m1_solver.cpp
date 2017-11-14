@@ -365,11 +365,17 @@ double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
 {
    double rho = rho_gf.GetValue(T.ElementNo, ip);
    double Te = max(1e-6, Te_gf.GetValue(T.ElementNo, ip));
-
-   return -1e-0 * rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT -
-      alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) *
-      exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
+   
+   double fM = exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
       pow(velocity, 2.0));
+   double dfMdv = - alphavT / pow(eos->vTe(Te), 2.0) * fM;
+
+   return -1e-0 * rho * alphavT * dfMdv;
+
+   //return -1e-0 * rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT -
+   //   alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) *
+   //   exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
+   //   pow(velocity, 2.0));
 }
 
 } // namespace hydrodynamics
