@@ -56,9 +56,11 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 
    if (!p_assembly)
    {
-      Force = 0.0;
+      vForce = 0.0;
+      tForce = 0.0;
       timer.sw_force.Start();
-      Force.Assemble();
+      vForce.Assemble();
+      tForce.Assemble();
       timer.sw_force.Stop();
    }
 
@@ -111,7 +113,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
    else
    {
       timer.sw_force.Start();
-      Force.Mult(I0, rhs);
+      vForce.Mult(I0, rhs);
       timer.sw_force.Stop();
       timer.dof_tstep += H1FESpace.GlobalTrueVSize();
       rhs.Neg();
@@ -173,7 +175,7 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
    else
    {
       timer.sw_force.Start();
-      Force.MultTranspose(I1, I0_rhs);
+      tForce.MultTranspose(I1, I0_rhs);
       timer.sw_force.Stop();
       timer.dof_tstep += L2FESpace.GlobalTrueVSize();
       //if (I0_source) { I0_rhs += *I0_source; }
@@ -181,6 +183,11 @@ void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
       {
          L2FESpace.GetElementDofs(z, l2dofs);
          I0_rhs.GetSubVector(l2dofs, loc_rhs);
+         //
+         I0source.GetSubVector(l2dofs, loc_I0source);
+         Me(z).Mult(loc_I0source, loc_MeMultI0source);
+         loc_rhs += loc_MeMultI0source;
+         //
          timer.sw_cgL2.Start();
          Me_inv(z).Mult(loc_rhs, loc_dI0);
          timer.sw_cgL2.Stop();
@@ -370,7 +377,10 @@ double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
       pow(velocity, 2.0));
    double dfMdv = - alphavT / pow(eos->vTe(Te), 2.0) * fM;
 
-   return -1e-0 * rho * alphavT * dfMdv;
+   // TODO positive or negative and why?
+   double Source_AWBS = 1e-0 * rho * alphavT * dfMdv;
+
+   return Source_AWBS;
 
    //return -1e-0 * rho * pow(alphavT, 3.0) * (2.0 * velocity / alphavT -
    //   alphavT * pow(velocity, 3.0) / pow(eos->vTe(Te), 2.0)) *

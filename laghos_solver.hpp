@@ -84,7 +84,7 @@ protected:
    // Velocity mass matrix and local inverses of the energy mass matrices. These
    // are constant in time, due to the pointwise mass conservation property.
    mutable ParBilinearForm Mv;
-   DenseTensor Me_inv;
+   DenseTensor Me, Me_inv;
 
    // Integration rule for all assemblies.
    const IntegrationRule &integ_rule;
@@ -97,7 +97,7 @@ protected:
    // Force matrix that combines the kinematic and thermodynamic spaces. It is
    // assembled in each time step and then it's used to compute the final
    // right-hand sides for momentum and specific internal energy.
-   mutable MixedBilinearForm Force;
+   mutable MixedBilinearForm vForce, tForce;
 
    // Same as above, but done through partial assembly.
    ForcePAOperator ForcePA;

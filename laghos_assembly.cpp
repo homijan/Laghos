@@ -305,7 +305,7 @@ void DensityIntegrator::AssembleRHSElementVect(const FiniteElement &fe,
    }
 }
 
-void ForceIntegrator::AssembleElementMatrix2(const FiniteElement &trial_fe,
+void vForceIntegrator::AssembleElementMatrix2(const FiniteElement &trial_fe,
                                              const FiniteElement &test_fe,
                                              ElementTransformation &Trans,
                                              DenseMatrix &elmat)
@@ -337,6 +337,48 @@ void ForceIntegrator::AssembleElementMatrix2(const FiniteElement &trial_fe,
             {
                loc_force(i, vd) +=
                   quad_data.vstressJinvT(vd)(zone_id*nqp + q, gd)
+                  * vshape(i,gd);
+            }
+         }
+      }
+
+      trial_fe.CalcShape(ip, shape);
+      AddMultVWt(Vloc_force, shape, elmat);
+   }
+}
+
+void tForceIntegrator::AssembleElementMatrix2(const FiniteElement &trial_fe,
+                                             const FiniteElement &test_fe,
+                                             ElementTransformation &Trans,
+                                             DenseMatrix &elmat)
+{
+   const int nqp = IntRule->GetNPoints();
+   const int dim = trial_fe.GetDim();
+   const int zone_id = Trans.ElementNo;
+   const int h1dofs_cnt = test_fe.GetDof();
+   const int l2dofs_cnt = trial_fe.GetDof();
+
+   elmat.SetSize(h1dofs_cnt*dim, l2dofs_cnt);
+   elmat = 0.0;
+
+   DenseMatrix vshape(h1dofs_cnt, dim), loc_force(h1dofs_cnt, dim);
+   Vector shape(l2dofs_cnt), Vloc_force(loc_force.Data(), h1dofs_cnt*dim);
+
+   for (int q = 0; q < nqp; q++)
+   {
+      const IntegrationPoint &ip = IntRule->IntPoint(q);
+
+      // Form stress:grad_shape at the current point.
+      test_fe.CalcDShape(ip, vshape);
+      for (int i = 0; i < h1dofs_cnt; i++)
+      {
+         for (int vd = 0; vd < dim; vd++) // Velocity components.
+         {
+            loc_force(i, vd) = 0.0;
+            for (int gd = 0; gd < dim; gd++) // Gradient components.
+            {
+               loc_force(i, vd) +=
+                  quad_data.tstressJinvT(vd)(zone_id*nqp + q, gd)
                   * vshape(i,gd);
             }
          }

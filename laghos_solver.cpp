@@ -95,25 +95,28 @@ LagrangianHydroOperator::LagrangianHydroOperator(int size,
      source_type(source_type_), cfl(cfl_),
      use_viscosity(visc), p_assembly(pa), cg_rel_tol(cgt), cg_max_iter(cgiter),
      material_pcf(material_),
-     Mv(&h1_fes), Me_inv(l2dofs_cnt, l2dofs_cnt, nzones),
+     Mv(&h1_fes), Me(l2dofs_cnt, l2dofs_cnt, nzones),
+     Me_inv(l2dofs_cnt, l2dofs_cnt, nzones),
      integ_rule(IntRules.Get(h1_fes.GetMesh()->GetElementBaseGeometry(),
                              3*h1_fes.GetOrder(0) + l2_fes.GetOrder(0) - 1)),
      quad_data(dim, nzones, integ_rule.GetNPoints()),
      quad_data_is_current(false),
-     Force(&l2_fes, &h1_fes), ForcePA(&quad_data, h1_fes, l2_fes),
+     vForce(&l2_fes, &h1_fes), tForce(&l2_fes, &h1_fes),
+     ForcePA(&quad_data, h1_fes, l2_fes),
      VMassPA(&quad_data, H1compFESpace), locEMassPA(&quad_data, l2_fes),
      locCG(), timer()
 {
    GridFunctionCoefficient rho_coeff(&rho0);
 
    // Standard local assembly and inversion for energy mass matrices.
-   DenseMatrix Me(l2dofs_cnt);
-   DenseMatrixInverse inv(&Me);
+   DenseMatrix Me_(l2dofs_cnt);
+   DenseMatrixInverse inv(&Me_);
    MassIntegrator mi(rho_coeff, &integ_rule);
    for (int i = 0; i < nzones; i++)
    {
       mi.AssembleElementMatrix(*l2_fes.GetFE(i),
-                               *l2_fes.GetElementTransformation(i), Me);
+                               *l2_fes.GetElementTransformation(i), Me_);
+      Me(i) = Me_;
       inv.Factor();
       inv.GetInverseMatrix(Me_inv(i));
    }
@@ -167,12 +170,19 @@ LagrangianHydroOperator::LagrangianHydroOperator(int size,
    }
    quad_data.h0 /= (double) H1FESpace.GetOrder(0);
 
-   ForceIntegrator *fi = new ForceIntegrator(quad_data);
-   fi->SetIntRule(&integ_rule);
-   Force.AddDomainIntegrator(fi);
+   vForceIntegrator *vfi = new vForceIntegrator(quad_data);
+   vfi->SetIntRule(&integ_rule);
+   vForce.AddDomainIntegrator(vfi);
    // Make a dummy assembly to figure out the sparsity.
-   Force.Assemble(0);
-   Force.Finalize(0);
+   vForce.Assemble(0);
+   vForce.Finalize(0);
+
+   tForceIntegrator *tfi = new tForceIntegrator(quad_data);
+   tfi->SetIntRule(&integ_rule);
+   tForce.AddDomainIntegrator(tfi);
+   // Make a dummy assembly to figure out the sparsity.
+   tForce.Assemble(0);
+   tForce.Finalize(0);
 
    if (p_assembly)
    {
@@ -229,9 +239,9 @@ void LagrangianHydroOperator::Mult(const Vector &S, Vector &dS_dt) const
 
    if (!p_assembly)
    {
-      Force = 0.0;
+      vForce = 0.0;
       timer.sw_force.Start();
-      Force.Assemble();
+      vForce.Assemble();
       timer.sw_force.Stop();
    }
 
@@ -284,7 +294,7 @@ void LagrangianHydroOperator::Mult(const Vector &S, Vector &dS_dt) const
    else
    {
       timer.sw_force.Start();
-      Force.Mult(one, rhs);
+      vForce.Mult(one, rhs);
       timer.sw_force.Stop();
       timer.dof_tstep += H1FESpace.GlobalTrueVSize();
       rhs.Neg();
@@ -339,7 +349,7 @@ void LagrangianHydroOperator::Mult(const Vector &S, Vector &dS_dt) const
    else
    {
       timer.sw_force.Start();
-      Force.MultTranspose(v, e_rhs);
+      vForce.MultTranspose(v, e_rhs);
       timer.sw_force.Stop();
       timer.dof_tstep += L2FESpace.GlobalTrueVSize();
       if (e_source) { e_rhs += *e_source; }

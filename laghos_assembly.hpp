@@ -111,15 +111,33 @@ public:
                                        Vector &elvect);
 };
 
-// Assembles element contributions to the global force matrix. This class is
-// used for the full assembly case; it's not used with partial assembly.
-class ForceIntegrator : public BilinearFormIntegrator
+// Assembles element contributions to the global velocity force matrix.
+// This class is used for the full assembly case; it's not used with partial
+// assembly.
+class vForceIntegrator : public BilinearFormIntegrator
 {
 private:
    const QuadratureData &quad_data;
 
 public:
-   ForceIntegrator(QuadratureData &quad_data_) : quad_data(quad_data_) { }
+   vForceIntegrator(QuadratureData &quad_data_) : quad_data(quad_data_) { }
+
+   virtual void AssembleElementMatrix2(const FiniteElement &trial_fe,
+                                       const FiniteElement &test_fe,
+                                       ElementTransformation &Trans,
+                                       DenseMatrix &elmat);
+};
+
+// Assembles element contributions to the global temperature force matrix.
+// This class is used for the full assembly case; it's not used with partial
+// assembly.
+class tForceIntegrator : public BilinearFormIntegrator
+{
+private:
+   const QuadratureData &quad_data;
+
+public:
+   tForceIntegrator(QuadratureData &quad_data_) : quad_data(quad_data_) { }
 
    virtual void AssembleElementMatrix2(const FiniteElement &trial_fe,
                                        const FiniteElement &test_fe,
