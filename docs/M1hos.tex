@@ -1,0 +1,194 @@
+\documentclass[review]{elsarticle}
+
+\usepackage{lineno,hyperref}
+\modulolinenumbers[5]
+
+\journal{Computers \& Mathematics with Applications}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%% `Elsevier LaTeX' style
+\bibliographystyle{elsarticle-num}
+%%%%%%%%%%%%%%%%%%%%%%%
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+%\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{color}
+%\usepackage{float}
+\usepackage{mathtools}
+
+\newcommand{\pdv}[2]{\frac{\partial{#1}}{\partial{#2}}}
+\newcommand{\fp}[2]{\pdv{#1}{#2}}
+\newcommand{\pdwc}[3]{\left(\fp{#1}{#2}\right)_{#3}}
+%\newcommand{\ppdv}[3]{\displaystyle \frac{\partial^2 #1}{\partial #2\partial #3}}
+\newcommand{\ppdv}[3]{\frac{\partial^2 #1}{\partial #2\partial #3}}
+\newcommand{\oover}[1]{\ensuremath{\frac{1}{#1}}}
+
+\newcommand{\vect}[1]{\boldsymbol{#1}}
+\newcommand{\matr}[1]{\mathbf{#1}}
+\newcommand{\dI}{\text{d}}
+\newcommand{\nuee}{\nu_{e}}
+\newcommand{\nutot}{\nu_{t}}
+%\newcommand{\vmag}{|\vect{v}|}
+\newcommand{\vmag}{v}
+\newcommand{\vn}{\vect{n}}
+\newcommand{\E}{\vect{E}}
+\newcommand{\B}{\vect{B}}
+\newcommand{\qe}{q_e}
+\newcommand{\me}{m_e}
+\newcommand{\fM}{f_M}
+\newcommand{\fzero}{f_0}
+\newcommand{\fone}{\vect{f}_1}
+\newcommand{\MI}{\matr{I}}
+\newcommand{\MA}{\matr{A}}
+
+
+\renewcommand{\refeq}[1]{(\ref{#1})}
+
+%%\renewcommand{\floatpagefraction}{.9}% 
+%\newlength{\picwidth}
+%\setlength{\picwidth}{0.49\linewidth}
+%%\setlength{\picwidth}{11cm}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+\begin{frontmatter}
+
+\title{High-order finite element modeling of M1-AWBS nonlocal electron transport}
+%\tnotetext[mytitlenote]{}
+
+\author[celiaaddress]{Milan, Vladimir, Philippe}
+\address[celiaaddress]{Universit\'{e} de Bordeaux - CNRS - CEA, CELIA, UMR 5107, F-33405 Talence, France}
+
+
+\begin{abstract}
+
+\end{abstract}
+
+\begin{keyword}
+Nonlocal transport \sep Kinetics \sep MHD \sep High-order methods \sep FEM
+%\MSC[2010] 00-01\sep  99-00
+\end{keyword}
+
+\end{frontmatter}
+
+\linenumbers
+
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
+
+\fbox{\parbox{0.99\textwidth}{
+%\centerline{\textcolor{red}{THIS WILL BE REMOVED}}
+\footnotesize
+\tableofcontents
+}}
+\newpage
+
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
+\section{Moments method}\label{sec:moment_method}
+
+\section{M1 model}\label{sec:m1_model}
+Simplified Boltzmann transport equation of electrons relying in the use of AWBS
+collision-thermalization operator \cite{AWBS_PRL1986} reads
+\begin{equation}
+  \vmag\vn\cdot\nabla f + \frac{\qe}{\me}\left( \E + 
+  \frac{\vmag}{c}\vn\times\B\right)\cdot\nabla_{\vect{v}} f = \nuee \vmag 
+  \pdv{}{\vmag}\left( f - \fM\right)\, .
+  \label{eq:AWBS}
+\end{equation}
+In order to eliminate the~dimensions of the~transport problem \refeq{eq:AWBS}
+the~two moment model referred to as \textit{M1-AWBS} 
+\begin{eqnarray}
+  \nuee\vmag\pdv{}{\vmag}\left(\fzero - \fM \right) &=&
+  \vmag\nabla\cdot\fone + \frac{\qe}{\me\vmag^2}\E\cdot\pdv{}{\vmag}
+  \left( \vmag^2 \fone\right)\, , 
+  \label{eq:M1f0}\\
+  \nuee\vmag\pdv{}{\vmag}\fone - \nutot\fone &=& 
+  \vmag\nabla\cdot\left(\MA\fzero\right) + 
+  \frac{\qe}{\me\vmag^2}\E\cdot\pdv{}{\vmag}
+  \left( \vmag^2 \MA\fzero\right) \nonumber\\
+  && + \frac{\qe}{\me\vmag}\E\cdot\left( \MA - \MI \right)\fzero +
+  \frac{\qe}{\me c}\B\times\fone\, ,
+  \label{eq:M1f1}
+\end{eqnarray}
+where the~anisotropy-closure matrix takes the~form
+\begin{equation}
+  \MA = \frac{1}{3}\MI + \frac{|\fone|^2}{2\fzero^2}
+  \left( 1 + \frac{|\fone|^2}{\fzero^2} \right)
+  \left( \frac{\fone\otimes\fone}{|\fone|^2} - \frac{1}{3}\MI\right)\, .
+\end{equation}
+%---------------------------------------------------------------------
+\subsection{High-order finite element scheme}\label{sec:hos}
+\begin{eqnarray}
+  \rho \pdv{\fzero}{\vmag} &=& 
+  \frac{\rho}{\nuee}\MI:\nabla\fone + 
+  \frac{\qe\rho}{\me\nuee\vmag}\E\cdot\pdv{\fone}{\vmag}
+  + \frac{2 \qe\rho}{\me\nuee\vmag^2}\E\cdot\fone + \rho \pdv{\fM}{\vmag}\, , 
+  \label{eq:M1hosf0}\\
+  \rho \pdv{\fone}{\vmag} &=&
+  %\frac{\rho}{\nuee}\nabla\cdot\left(\MA\fzero\right) + 
+  \nabla\cdot\left(\frac{\rho\MA}{\nuee}\fzero\right) +
+  \left(\frac{\qe\rho}{\me\nuee\vmag^2}\E\cdot\left( 3\MA - \MI \right) - 
+  \nabla\frac{\rho}{\nuee}\cdot\MA \right)\fzero \nonumber\\
+  &&+ \frac{\qe\rho}{\me\nuee\vmag}\E\cdot\pdv{}{\vmag}
+  \left( \MA\fzero\right) + \frac{\qe\rho}{\me c \nuee\vmag}\B\times\fone + 
+  \frac{\rho \nutot}{\nuee\vmag}\fone\, ,
+  \label{eq:M1hosf1}
+\end{eqnarray}
+\begin{multline}
+  \int_{\Omega}\vect{\phi}\, \otimes\, \vect{\phi}^T 
+  \rho\, \dI \Omega\, \cdot\, \pdv{\vect{\fzero}}{\vmag} = 
+  \int_{\Omega}\vect{\phi}\, \otimes \left(
+  \frac{\rho}{\nuee}\MI:\nabla\vect{w}^T + 
+  \frac{2 \qe\rho}{\me\nuee\vmag^2}\E\cdot\vect{w}^T \right)\dI \Omega
+  \, \cdot\, \fone \\
+  + \int_{\Omega}\vect{\phi}\, \otimes
+  \frac{\qe\rho}{\me\nuee\vmag}\E\, \cdot\, \vect{w}^T\, \dI \Omega\, 
+  \cdot\, \pdv{\fone}{\vmag} + 
+  \int_{\Omega}\vect{\phi}\, \otimes\, \vect{\phi}^T \rho\, \dI\Omega\,
+  \cdot\, \pdv{\vect{\fM}}{\vmag}
+  \, , 
+  \label{eq:M1hosf0}
+\end{multline}
+\begin{multline}
+  \int_{\Omega}\vect{w}\, \otimes\, \vect{w}^T \rho\, \dI\Omega\, \cdot\,  
+  \pdv{\fone}{\vmag} =
+  %\int_{\Omega}\vect{w}\, \otimes
+  %\nabla\cdot\left(\frac{\rho\MA}{\nuee}\vect{\phi}^T\right)\, \dI \Omega\, 
+  %\cdot\, \vect{\fzero} \\
+  - \int_{\Omega}\frac{\rho}{\nuee} \MA : \nabla\vect{w}\, \otimes\,
+  \vect{\phi}^T\, \dI \Omega\, 
+  \cdot\, \vect{\fzero} \\
+  + \int_{\Omega}\vect{w}\, \otimes
+  \left(\frac{\qe\rho}{\me\nuee\vmag^2}\E\, \cdot\, \left( 3\MA - \MI \right) - 
+  \nabla\left(\frac{\rho}{\nuee}\right)\, \cdot\, \MA \right)\vect{\phi}^T\, 
+  \dI\Omega\, \cdot\, \vect{\fzero} \\
+  + \int_{\Omega}\vect{w}\, \otimes
+  \frac{\qe\rho}{\me\nuee\vmag}\E \cdot \MA\, \vect{\phi}^T\, \dI \Omega\, 
+  \cdot\, \pdv{\vect{\fzero}}{\vmag}\\
+  + \int_{\Omega}\vect{w}\, \otimes
+  \left(\frac{\qe\rho}{\me c \nuee\vmag}\B\times\vect{w}^T + 
+  \frac{\rho \nutot}{\nuee\vmag} \vect{w}^T\right)\, \dI\Omega\, 
+  \cdot\, \fone\, ,
+  \label{eq:M1hosf1}
+\end{multline}
+\cite{Dobrev_Kolev_Rieben-High-order_curvilinear_finite_element_methods_for_Lagrangian_hydrodynamics}
+
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
+\section*{References}
+\bibliography{NTH}
+
+
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
+
+
+\end{document}
+
+%---------------------------------------------------------------------
+%---------------------------------------------------------------------
