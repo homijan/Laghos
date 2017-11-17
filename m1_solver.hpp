@@ -130,6 +130,7 @@ public:
       { alpha = alpha_; SetVelocityScale(alpha, Tmax); }
    void SetTmax(double Tmax_)
       { Tmax = Tmax_; SetVelocityScale(alpha, Tmax); }
+   double GetVelocityScale() { return alphavT; }
 };
 
 // M1 mean-stopping-power coefficient.

@@ -329,22 +329,20 @@ int main(int argc, char *argv[])
    // The monolithic BlockVector stores unknown fields as:
    // - 0 -> isotropic I0 (energy density)
    // - 1 -> anisotropic I1 (flux density)
-
    Array<int> m1true_offset(3);
    m1true_offset[0] = 0;
    m1true_offset[1] = m1true_offset[0] + Vsize_l2;
    m1true_offset[2] = m1true_offset[1] + Vsize_h1;
    BlockVector m1S(m1true_offset);
 
-   // Define GridFunction objects for the position, velocity and specific
-   // internal energy.  There is no function for the density, as we can always
-   // compute the density values given the current mesh position, using the
-   // property of pointwise mass conservation.
-
+   // Define GridFunction objects for the zero and first moments of
+   // the~electron distribution function.
    ParGridFunction I0_gf, I1_gf;
    I0_gf.MakeRef(&L2FESpace, m1S, m1true_offset[0]);
    I1_gf.MakeRef(&H1FESpace, m1S, m1true_offset[1]);
 
+   // Define hydrodynamics related coefficients as mean stopping power and
+   // source function depending on plasma temperature and density.
    double m1cfl = 0.1;
    double kB = 1.0, me = 1.0;
    EOS eos(kB, me);
@@ -352,9 +350,14 @@ int main(int argc, char *argv[])
    M1HydroCoefficient *mspInv_pcf = &mspInv;
    M1I0Source sourceI0(rho_gf, e_gf, v_gf, material_pcf, &eos);
    M1HydroCoefficient *sourceI0_pcf = &sourceI0;
+
+   // Initialize the M1-AWBS operator
    M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho_gf, m1cfl,
                      mspInv_pcf, sourceI0_pcf, x_gf, e_gf, p_assembly, cg_tol,
                      cg_max_iter);
+
+   // Prepare grid functions integrating the moments of I0 and I1.
+   ParGridFunction intI0_gf(&L2FESpace), intI1_gf(&H1FESpace);
 
    ODESolver *m1ode_solver = NULL;
    //m1ode_solver = new ForwardEulerSolver;
@@ -364,27 +367,38 @@ int main(int argc, char *argv[])
    m1ode_solver->Init(m1oper);
 
    // Static coefficient defined in m1_solver.hpp.
-   a0 = 2e3;
+   a0 = 1e3;
    double vTmultiple = 6.0;
+   //double fluxMoment = 0.0; // distribution function
+   //double fluxMoment = 1.0; // current
+   double fluxMoment = 3.0; // heat flux
    oper.ComputeDensity(rho_gf);
    mspInv.SetThermalVelocityMultiple(vTmultiple);
    double loc_Tmax = e_gf.Max(), glob_Tmax;
    MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
                  pmesh->GetComm());
    mspInv.SetTmax(glob_Tmax);
+   double alphavT = mspInv.GetVelocityScale();
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
-   double vmax = 1.0, vmin = 0.666 * vmax;
+   double vmax = 1.0, vmin = 0.01 * vmax;
    m1oper.SetTime(vmax);
-   double dvmin = m1oper.GetVelocityStepEstimate(m1S);
+   double dvmax = vmax*0.01;
+   double dvmin = min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
    I0_gf = 0.0; I1_gf = 0.0;
    int m1ti = 0;
    double v = vmax;
    double dv = -dvmin;
+   intI0_gf = 0.0;
+   intI1_gf = 0.0;
    while (abs(dv) >= abs(dvmin))
    {
       m1ti++;
       m1ode_solver->Step(m1S, v, dv);
+
+      // Perform the integration over velocity space.
+      intI0_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv), I0_gf);
+      intI1_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv), I1_gf);
 
       double loc_minI0 = I0_gf.Min(), glob_minI0;
       MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
@@ -400,10 +414,10 @@ int main(int argc, char *argv[])
                        pmesh->GetComm());
 
       m1oper.ResetVelocityStepEstimate();
-	  m1oper.ResetQuadratureData();
+      m1oper.ResetQuadratureData();
       m1oper.SetTime(v);
-	  dv = - m1oper.GetVelocityStepEstimate(m1S);
-	  if (v + dv < vmin) { dv = vmin - v; }
+      dv = - min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
+      if (v + dv < vmin) { dv = vmin - v; }
 
       if (mpi.Root())
       {
@@ -541,11 +555,11 @@ int main(int argc, char *argv[])
                            "Density", Wx, Wy, Ww, Wh);
             Wx += offx;
             VisualizeField(vis_v, vishost, visport,
-                           I1_gf, "Velocity", Wx, Wy, Ww, Wh);
+                           intI1_gf, "Heat flux", Wx, Wy, Ww, Wh);
 						   //v_gf, "Velocity", Wx, Wy, Ww, Wh);
             Wx += offx;
-            VisualizeField(vis_e, vishost, visport, I0_gf, //e_gf,
-                           "Specific Internal Energy", Wx, Wy, Ww,Wh);
+            VisualizeField(vis_e, vishost, visport, intI0_gf, //e_gf,
+                           "I0", Wx, Wy, Ww,Wh);
             Wx += offx;
          }
 
@@ -598,19 +612,29 @@ int main(int argc, char *argv[])
          MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
                        pmesh->GetComm());
          mspInv.SetTmax(glob_Tmax);
+         alphavT = mspInv.GetVelocityScale();
          m1oper.ResetVelocityStepEstimate();
          m1oper.ResetQuadratureData();
          m1oper.SetTime(vmax);
-         double dvmin = m1oper.GetVelocityStepEstimate(m1S);
+         double dvmin = min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
          I0_gf = 1e-5; I1_gf = 0.0;
          int m1ti = 0;
          double v = vmax;
          double dv = -dvmin;
+         intI0_gf = 0.0;
+         intI1_gf = 0.0;
 		 while (abs(dv) >= abs(dvmin))
          {
             m1ti++;
             m1ode_solver->Step(m1S, v, dv);
-            double loc_minI0 = I0_gf.Min(), glob_minI0;
+
+            // Perform the integration over velocity space.
+            intI0_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
+			                 I0_gf);
+            intI1_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
+			                 I1_gf);
+
+			double loc_minI0 = I0_gf.Min(), glob_minI0;
             MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
                           pmesh->GetComm());
             double loc_maxI0 = I0_gf.Max(), glob_maxI0;
@@ -624,9 +648,9 @@ int main(int argc, char *argv[])
                           pmesh->GetComm());
 
             m1oper.ResetVelocityStepEstimate();
-			m1oper.ResetQuadratureData();
-			m1oper.SetTime(v);
-			dv = - m1oper.GetVelocityStepEstimate(m1S);
+            m1oper.ResetQuadratureData();
+            m1oper.SetTime(v);
+            dv = - min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
             if (v + dv < vmin) { dv = vmin - v; }
 
             if (mpi.Root())

@@ -28,7 +28,7 @@
 \newcommand{\vect}[1]{\boldsymbol{#1}}
 \newcommand{\matr}[1]{\mathbf{#1}}
 \newcommand{\dI}{\text{d}}
-\newcommand{\nuee}{\nu_{e}}
+\newcommand{\nue}{\nu_{e}}
 \newcommand{\nutot}{\nu_{t}}
 %\newcommand{\vmag}{|\vect{v}|}
 \newcommand{\vmag}{v}
@@ -95,18 +95,18 @@ Simplified Boltzmann transport equation of electrons relying in the use of AWBS
 collision-thermalization operator \cite{AWBS_PRL1986} reads
 \begin{equation}
   \vmag\vn\cdot\nabla f + \frac{\qe}{\me}\left( \E + 
-  \frac{\vmag}{c}\vn\times\B\right)\cdot\nabla_{\vect{v}} f = \nuee \vmag 
+  \frac{\vmag}{c}\vn\times\B\right)\cdot\nabla_{\vect{v}} f = \nue \vmag 
   \pdv{}{\vmag}\left( f - \fM\right)\, .
   \label{eq:AWBS}
 \end{equation}
 In order to eliminate the~dimensions of the~transport problem \refeq{eq:AWBS}
 the~two moment model referred to as \textit{M1-AWBS} 
 \begin{eqnarray}
-  \nuee\vmag\pdv{}{\vmag}\left(\fzero - \fM \right) &=&
+  \nue\vmag\pdv{}{\vmag}\left(\fzero - \fM \right) &=&
   \vmag\nabla\cdot\fone + \frac{\qe}{\me\vmag^2}\E\cdot\pdv{}{\vmag}
   \left( \vmag^2 \fone\right)\, , 
   \label{eq:M1f0}\\
-  \nuee\vmag\pdv{}{\vmag}\fone - \nutot\fone &=& 
+  \nue\vmag\pdv{}{\vmag}\fone - \nutot\fone &=& 
   \vmag\nabla\cdot\left(\MA\fzero\right) + 
   \frac{\qe}{\me\vmag^2}\E\cdot\pdv{}{\vmag}
   \left( \vmag^2 \MA\fzero\right) \nonumber\\
@@ -124,57 +124,69 @@ where the~anisotropy-closure matrix takes the~form
 \subsection{High-order finite element scheme}\label{sec:hos}
 \begin{eqnarray}
   \rho \pdv{\fzero}{\vmag} &=& 
-  \frac{\rho}{\nuee}\MI:\nabla\fone + 
-  \frac{\qe\rho}{\me\nuee\vmag}\E\cdot\pdv{\fone}{\vmag}
-  + \frac{2 \qe\rho}{\me\nuee\vmag^2}\E\cdot\fone + \rho \pdv{\fM}{\vmag}\, , 
+  \frac{\rho}{\nue}\MI:\nabla\fone + 
+  \frac{\qe\rho}{\me\nue\vmag}\E\cdot\pdv{\fone}{\vmag}
+  + \frac{2 \qe\rho}{\me\nue\vmag^2}\E\cdot\fone + \rho \pdv{\fM}{\vmag}\, , 
   \label{eq:M1hosf0}\\
   \rho \pdv{\fone}{\vmag} &=&
-  %\frac{\rho}{\nuee}\nabla\cdot\left(\MA\fzero\right) + 
-  \nabla\cdot\left(\frac{\rho\MA}{\nuee}\fzero\right) +
-  \left(\frac{\qe\rho}{\me\nuee\vmag^2}\E\cdot\left( 3\MA - \MI \right) - 
-  \nabla\frac{\rho}{\nuee}\cdot\MA \right)\fzero \nonumber\\
-  &&+ \frac{\qe\rho}{\me\nuee\vmag}\E\cdot\pdv{}{\vmag}
-  \left( \MA\fzero\right) + \frac{\qe\rho}{\me c \nuee\vmag}\B\times\fone + 
-  \frac{\rho \nutot}{\nuee\vmag}\fone\, ,
+  %\frac{\rho}{\nue}\nabla\cdot\left(\MA\fzero\right) + 
+  \nabla\cdot\left(\frac{\rho\MA}{\nue}\fzero\right) +
+  \left(\frac{\qe\rho}{\me\nue\vmag^2}\E\cdot\left( 3\MA - \MI \right) - 
+  \nabla\left( \frac{\rho}{\nue}\right)\cdot\MA \right)\fzero \nonumber\\
+  &&+ \frac{\qe\rho}{\me\nue\vmag}\E\cdot\pdv{}{\vmag}
+  \left( \MA\fzero\right) + \frac{\qe\rho}{\me c \nue\vmag}\B\times\fone + 
+  \frac{\rho \nutot}{\nue\vmag}\fone\, ,
   \label{eq:M1hosf1}
 \end{eqnarray}
 \begin{multline}
   \int_{\Omega}\vect{\phi}\, \otimes\, \vect{\phi}^T 
   \rho\, \dI \Omega\, \cdot\, \pdv{\vect{\fzero}}{\vmag} = 
   \int_{\Omega}\vect{\phi}\, \otimes \left(
-  \frac{\rho}{\nuee}\MI:\nabla\vect{w}^T + 
-  \frac{2 \qe\rho}{\me\nuee\vmag^2}\E\cdot\vect{w}^T \right)\dI \Omega
+  \frac{\rho}{\nue}\MI:\nabla\vect{w}^T + 
+  \frac{2 \qe\rho}{\me\nue\vmag^2}\E\cdot\vect{w}^T \right)\dI \Omega
   \, \cdot\, \fone \\
   + \int_{\Omega}\vect{\phi}\, \otimes
-  \frac{\qe\rho}{\me\nuee\vmag}\E\, \cdot\, \vect{w}^T\, \dI \Omega\, 
+  \frac{\qe\rho}{\me\nue\vmag}\E\, \cdot\, \vect{w}^T\, \dI \Omega\, 
   \cdot\, \pdv{\fone}{\vmag} + 
   \int_{\Omega}\vect{\phi}\, \otimes\, \vect{\phi}^T \rho\, \dI\Omega\,
   \cdot\, \pdv{\vect{\fM}}{\vmag}
   \, , 
-  \label{eq:M1hosf0}
+  \label{eq:FEM1hosf0}
 \end{multline}
 \begin{multline}
   \int_{\Omega}\vect{w}\, \otimes\, \vect{w}^T \rho\, \dI\Omega\, \cdot\,  
   \pdv{\fone}{\vmag} =
   %\int_{\Omega}\vect{w}\, \otimes
-  %\nabla\cdot\left(\frac{\rho\MA}{\nuee}\vect{\phi}^T\right)\, \dI \Omega\, 
+  %\nabla\cdot\left(\frac{\rho\MA}{\nue}\vect{\phi}^T\right)\, \dI \Omega\, 
   %\cdot\, \vect{\fzero} \\
-  - \int_{\Omega}\frac{\rho}{\nuee} \MA : \nabla\vect{w}\, \otimes\,
+  - \int_{\Omega}\frac{\rho}{\nue} \MA : \nabla\vect{w}\, \otimes\,
   \vect{\phi}^T\, \dI \Omega\, 
   \cdot\, \vect{\fzero} \\
   + \int_{\Omega}\vect{w}\, \otimes
-  \left(\frac{\qe\rho}{\me\nuee\vmag^2}\E\, \cdot\, \left( 3\MA - \MI \right) - 
-  \nabla\left(\frac{\rho}{\nuee}\right)\, \cdot\, \MA \right)\vect{\phi}^T\, 
+  \left(\frac{\qe\rho}{\me\nue\vmag^2}\E\, \cdot\, \left( 3\MA - \MI \right) - 
+  \nabla\left(\frac{\rho}{\nue}\right)\, \cdot\, \MA \right)\vect{\phi}^T\, 
   \dI\Omega\, \cdot\, \vect{\fzero} \\
   + \int_{\Omega}\vect{w}\, \otimes
-  \frac{\qe\rho}{\me\nuee\vmag}\E \cdot \MA\, \vect{\phi}^T\, \dI \Omega\, 
+  \frac{\qe\rho}{\me\nue\vmag}\E \cdot \MA\, \vect{\phi}^T\, \dI \Omega\, 
   \cdot\, \pdv{\vect{\fzero}}{\vmag}\\
   + \int_{\Omega}\vect{w}\, \otimes
-  \left(\frac{\qe\rho}{\me c \nuee\vmag}\B\times\vect{w}^T + 
-  \frac{\rho \nutot}{\nuee\vmag} \vect{w}^T\right)\, \dI\Omega\, 
+  \left(\frac{\qe\rho}{\me c \nue\vmag}\B\times\vect{w}^T + 
+  \frac{\rho \nutot}{\nue\vmag} \vect{w}^T\right)\, \dI\Omega\, 
   \cdot\, \fone\, ,
-  \label{eq:M1hosf1}
+  \label{eq:FEM1hosf1}
 \end{multline}
+\begin{eqnarray}
+  \matr{M}_0\, \cdot\, \pdv{\vect{\fzero}}{\vmag} &=& 
+  \left(\matr{D}_0^T + \frac{2\qe}{\me\vmag^2}\matr{E}_0\right) \cdot\, \fone + 
+  \frac{\qe}{\me\vmag}\matr{E}_0\, \cdot\, \pdv{\fone}{\vmag}
+  + \matr{M}_0\, \cdot\, \pdv{\vect{\fM}}{\vmag}\, , 
+  \label{eq:MM1hosf0}\\
+  \matr{M}_1\, \cdot\, \pdv{\fone}{\vmag} &=& 
+  - \matr{D}_1\, \cdot\, \vect{\fzero} + \matr{EI}_1\, \cdot\, \vect{\fzero}
+  + \matr{E}_1\, \cdot\, \pdv{\vect{\fzero}}{\vmag} 
+  + \matr{B}_1\, \cdot\, \fone + \matr{N}\, \cdot\, \fone\, ,
+  \label{eq:MM1hosf1}
+\end{eqnarray}
 \cite{Dobrev_Kolev_Rieben-High-order_curvilinear_finite_element_methods_for_Lagrangian_hydrodynamics}
 
 %---------------------------------------------------------------------

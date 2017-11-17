@@ -375,10 +375,11 @@ double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
    
    double fM = exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
       pow(velocity, 2.0));
-   double dfMdv = - alphavT / pow(eos->vTe(Te), 2.0) * fM;
+   double dfMdv = - rho * alphavT / pow(eos->vTe(Te), 2.0) * fM;
 
-   // TODO positive or negative and why?
-   double Source_AWBS = 1e-0 * rho * alphavT * dfMdv;
+   // M0*df0dv = D0^T*f1 + M0*dfMdv
+   // Notice that df0dv applies derivative with respect to normalized v.
+   double Source_AWBS = alphavT * dfMdv;
 
    return Source_AWBS;
 
