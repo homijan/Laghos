@@ -373,9 +373,10 @@ double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
    double rho = rho_gf.GetValue(T.ElementNo, ip);
    double Te = max(1e-6, Te_gf.GetValue(T.ElementNo, ip));
    
-   double fM = exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
+   // Maxwell-Boltzmann distribution fM = ne*c*exp(-v^2/2/vT^2)
+   double fM = rho * exp(- pow(alphavT, 2.0) / 2.0 / pow(eos->vTe(Te), 2.0) *
       pow(velocity, 2.0));
-   double dfMdv = - rho * alphavT / pow(eos->vTe(Te), 2.0) * fM;
+   double dfMdv = - alphavT * velocity / pow(eos->vTe(Te), 2.0) * fM;
 
    // M0*df0dv = D0^T*f1 + M0*dfMdv
    // Notice that df0dv applies derivative with respect to normalized v.

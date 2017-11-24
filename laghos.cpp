@@ -343,13 +343,33 @@ int main(int argc, char *argv[])
 
    // Define hydrodynamics related coefficients as mean stopping power and
    // source function depending on plasma temperature and density.
-   double m1cfl = 0.1;
+   double m1cfl = 0.25;
    double kB = 1.0, me = 1.0;
    EOS eos(kB, me);
    M1MeanStoppingPowerInverse mspInv(rho_gf, e_gf, v_gf, material_pcf, &eos);
    M1HydroCoefficient *mspInv_pcf = &mspInv;
    M1I0Source sourceI0(rho_gf, e_gf, v_gf, material_pcf, &eos);
    M1HydroCoefficient *sourceI0_pcf = &sourceI0;
+
+   // Static coefficient defined in m1_solver.hpp.
+   if (pmesh->Dimension() == 1)
+   {
+      a0 = 2e1;
+      vis_steps = 10000;
+      m1cfl = 0.5;
+   }
+   else if (pmesh->Dimension() == 2)
+   {
+      a0 = 2e1;
+      vis_steps = 10000;
+      m1cfl = 0.5;
+   }
+   else if (pmesh->Dimension() == 3)
+   {
+      a0 = 2e1;
+      vis_steps = 10000;
+      m1cfl = 0.1;
+   }
 
    // Initialize the M1-AWBS operator
    M1Operator m1oper(m1S.Size(), H1FESpace, L2FESpace, ess_tdofs, rho_gf, m1cfl,
@@ -361,29 +381,30 @@ int main(int argc, char *argv[])
 
    ODESolver *m1ode_solver = NULL;
    //m1ode_solver = new ForwardEulerSolver;
-   m1ode_solver = new RK2Solver(0.5);
-   //m1ode_solver = new RK4Solver;
+   //m1ode_solver = new RK2Solver(0.5);
+   m1ode_solver = new RK4Solver;
    //m1ode_solver = new RK6Solver;
    m1ode_solver->Init(m1oper);
 
-   // Static coefficient defined in m1_solver.hpp.
-   a0 = 1e3;
-   double vTmultiple = 6.0;
+   double vTmultiple = 5.0;
    //double fluxMoment = 0.0; // distribution function
    //double fluxMoment = 1.0; // current
    double fluxMoment = 3.0; // heat flux
    oper.ComputeDensity(rho_gf);
    mspInv.SetThermalVelocityMultiple(vTmultiple);
+   sourceI0.SetThermalVelocityMultiple(vTmultiple);
    double loc_Tmax = e_gf.Max(), glob_Tmax;
    MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
                  pmesh->GetComm());
    mspInv.SetTmax(glob_Tmax);
+   sourceI0.SetTmax(glob_Tmax);
    double alphavT = mspInv.GetVelocityScale();
    m1oper.ResetVelocityStepEstimate();
    m1oper.ResetQuadratureData();
    double vmax = 1.0, vmin = 0.01 * vmax;
+   //double vmax = 0.01, vmin = 0.001 * vmax;
    m1oper.SetTime(vmax);
-   double dvmax = vmax*0.01;
+   double dvmax = vmax*0.1;
    double dvmin = min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
    I0_gf = 0.0; I1_gf = 0.0;
    int m1ti = 0;
@@ -391,6 +412,7 @@ int main(int argc, char *argv[])
    double dv = -dvmin;
    intI0_gf = 0.0;
    intI1_gf = 0.0;
+/*
    while (abs(dv) >= abs(dvmin))
    {
       m1ti++;
@@ -425,13 +447,14 @@ int main(int argc, char *argv[])
          cout << "group " << setw(5) << m1ti
                  << ",\tv = " << setw(5) << setprecision(4) << v
                  << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
-                 << "[min(I0), max(I0)] = [" << setprecision(17)
+                 << "[min(f0), max(f0)] = [" << setprecision(17)
                  << glob_minI0 << ",\t" << glob_maxI0 << "]" << endl
-                 << "[min(I1), max(I1)] = [" << setprecision(17)
+                 << "[min(f1), max(f1)] = [" << setprecision(17)
                  << glob_minI1 << ",\t" << glob_maxI1 << "]"
                  << endl;
       }
    }
+*/
 ///////////////////////////////////////////////////////////////
 ///// M1 nonlocal solver //////////////////////////////////////
 ///////////////////////////////////////////////////////////////
@@ -460,10 +483,10 @@ int main(int argc, char *argv[])
                      "Density", Wx, Wy, Ww, Wh);
       Wx += offx;
       VisualizeField(vis_v, vishost, visport, v_gf,
-                     "Velocity", Wx, Wy, Ww, Wh);
+                     "Heat flux", Wx, Wy, Ww, Wh);
       Wx += offx;
       VisualizeField(vis_e, vishost, visport, e_gf,
-                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
+                     "T", Wx, Wy, Ww, Wh);
    }
 
    // Save data for VisIt visualization
@@ -544,6 +567,76 @@ int main(int argc, char *argv[])
          // another set of GLVis connections (one from each rank):
          MPI_Barrier(pmesh->GetComm());
 
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
+         oper.ComputeDensity(rho_gf);
+         mspInv.SetThermalVelocityMultiple(vTmultiple);
+         sourceI0.SetThermalVelocityMultiple(vTmultiple);
+         double loc_Tmax = e_gf.Max(), glob_Tmax;
+         MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
+                       pmesh->GetComm());
+         mspInv.SetTmax(glob_Tmax);
+         sourceI0.SetTmax(glob_Tmax);
+         alphavT = mspInv.GetVelocityScale();
+         m1oper.ResetVelocityStepEstimate();
+         m1oper.ResetQuadratureData();
+         m1oper.SetTime(vmax);
+         double dvmin = min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
+         I0_gf = 0.0; //1e-2; 
+		 I1_gf = 0.0;
+         int m1ti = 0;
+         double v = vmax;
+         double dv = -dvmin;
+         intI0_gf = 0.0;
+         intI1_gf = 0.0;
+		 while (abs(dv) >= abs(dvmin))
+         {
+            m1ti++;
+            m1ode_solver->Step(m1S, v, dv);
+
+            // Perform the integration over velocity space.
+            intI0_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
+			                 I0_gf);
+            intI1_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
+			                 I1_gf);
+
+			double loc_minI0 = I0_gf.Min(), glob_minI0;
+            MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
+                          pmesh->GetComm());
+            double loc_maxI0 = I0_gf.Max(), glob_maxI0;
+            MPI_Allreduce(&loc_maxI0, &glob_maxI0, 1, MPI_DOUBLE, MPI_MAX,
+                          pmesh->GetComm());
+            double loc_minI1 = I1_gf.Min(), glob_minI1;
+            MPI_Allreduce(&loc_minI1, &glob_minI1, 1, MPI_DOUBLE, MPI_MIN,
+                          pmesh->GetComm());
+            double loc_maxI1 = I1_gf.Max(), glob_maxI1;
+            MPI_Allreduce(&loc_maxI1, &glob_maxI1, 1, MPI_DOUBLE, MPI_MAX,
+                          pmesh->GetComm());
+
+            m1oper.ResetVelocityStepEstimate();
+            m1oper.ResetQuadratureData();
+            m1oper.SetTime(v);
+            dv = - min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
+            if (v + dv < vmin) { dv = vmin - v; }
+
+            if (mpi.Root())
+            {
+               cout << fixed;
+               cout << "group " << setw(5) << m1ti
+               << ",\tv = " << setw(5) << setprecision(4) << v
+               << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
+               << "[min(f0), max(f0)] = [" << setprecision(17)
+               << glob_minI0 << ",\t" << glob_maxI0 << "]" << endl
+               << "[min(f1), max(f1)] = [" << setprecision(17)
+               << glob_minI1 << ",\t" << glob_maxI1 << "]"
+               << endl;
+            }
+         }
+///////////////////////////////////////////////////////////////
+///// M1 nonlocal solver //////////////////////////////////////
+///////////////////////////////////////////////////////////////
+
          if (visualization || visit || gfprint) { oper.ComputeDensity(rho_gf); }
          if (visualization)
          {
@@ -558,8 +651,8 @@ int main(int argc, char *argv[])
                            intI1_gf, "Heat flux", Wx, Wy, Ww, Wh);
 						   //v_gf, "Velocity", Wx, Wy, Ww, Wh);
             Wx += offx;
-            VisualizeField(vis_e, vishost, visport, intI0_gf, //e_gf,
-                           "I0", Wx, Wy, Ww,Wh);
+            VisualizeField(vis_e, vishost, visport, e_gf, //intI0_gf,
+                           "T", Wx, Wy, Ww,Wh);
             Wx += offx;
          }
 
@@ -602,73 +695,6 @@ int main(int argc, char *argv[])
             e_gf.Save(e_ofs);
             e_ofs.close();
          }
-
-///////////////////////////////////////////////////////////////
-///// M1 nonlocal solver //////////////////////////////////////
-///////////////////////////////////////////////////////////////
-         oper.ComputeDensity(rho_gf);
-         mspInv.SetThermalVelocityMultiple(vTmultiple);
-         double loc_Tmax = e_gf.Max(), glob_Tmax;
-         MPI_Allreduce(&loc_Tmax, &glob_Tmax, 1, MPI_DOUBLE, MPI_MAX,
-                       pmesh->GetComm());
-         mspInv.SetTmax(glob_Tmax);
-         alphavT = mspInv.GetVelocityScale();
-         m1oper.ResetVelocityStepEstimate();
-         m1oper.ResetQuadratureData();
-         m1oper.SetTime(vmax);
-         double dvmin = min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
-         I0_gf = 1e-5; I1_gf = 0.0;
-         int m1ti = 0;
-         double v = vmax;
-         double dv = -dvmin;
-         intI0_gf = 0.0;
-         intI1_gf = 0.0;
-		 while (abs(dv) >= abs(dvmin))
-         {
-            m1ti++;
-            m1ode_solver->Step(m1S, v, dv);
-
-            // Perform the integration over velocity space.
-            intI0_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
-			                 I0_gf);
-            intI1_gf.Add(pow(alphavT*v, fluxMoment + 2.0) * alphavT*abs(dv),
-			                 I1_gf);
-
-			double loc_minI0 = I0_gf.Min(), glob_minI0;
-            MPI_Allreduce(&loc_minI0, &glob_minI0, 1, MPI_DOUBLE, MPI_MIN,
-                          pmesh->GetComm());
-            double loc_maxI0 = I0_gf.Max(), glob_maxI0;
-            MPI_Allreduce(&loc_maxI0, &glob_maxI0, 1, MPI_DOUBLE, MPI_MAX,
-                          pmesh->GetComm());
-            double loc_minI1 = I1_gf.Min(), glob_minI1;
-            MPI_Allreduce(&loc_minI1, &glob_minI1, 1, MPI_DOUBLE, MPI_MIN,
-                          pmesh->GetComm());
-            double loc_maxI1 = I1_gf.Max(), glob_maxI1;
-            MPI_Allreduce(&loc_maxI1, &glob_maxI1, 1, MPI_DOUBLE, MPI_MAX,
-                          pmesh->GetComm());
-
-            m1oper.ResetVelocityStepEstimate();
-            m1oper.ResetQuadratureData();
-            m1oper.SetTime(v);
-            dv = - min(dvmax, m1oper.GetVelocityStepEstimate(m1S));
-            if (v + dv < vmin) { dv = vmin - v; }
-
-            if (mpi.Root())
-            {
-               cout << fixed;
-               cout << "group " << setw(5) << m1ti
-               << ",\tv = " << setw(5) << setprecision(4) << v
-               << ",\tdv = " << setw(5) << setprecision(8) << dv << endl
-               << "[min(I0), max(I0)] = [" << setprecision(17)
-               << glob_minI0 << ",\t" << glob_maxI0 << "]" << endl
-               << "[min(I1), max(I1)] = [" << setprecision(17)
-               << glob_minI1 << ",\t" << glob_maxI1 << "]"
-               << endl;
-            }
-         }
-///////////////////////////////////////////////////////////////
-///// M1 nonlocal solver //////////////////////////////////////
-///////////////////////////////////////////////////////////////
       }
    }
 
