@@ -18,7 +18,7 @@
 #define MFEM_M1_SOLVER
 
 #include "mfem.hpp"
-#include "laghos_solver.hpp"
+#include "m1_assembly.hpp"
 
 #ifdef MFEM_USE_MPI
 
@@ -29,16 +29,85 @@
 namespace mfem
 {
 
-namespace hydrodynamics
+namespace nth
 {
+
+/// Visualize the given parallel grid function, using a GLVis server on the
+/// specified host and port. Set the visualization window title, and optionally,
+/// its geometry.
+void VisualizeField(socketstream &sock, const char *vishost, int visport,
+                    ParGridFunction &gf, const char *title,
+                    int x = 0, int y = 0, int w = 400, int h = 400,
+                    bool vec = false);
+
+struct TimingData
+{
+   // Total times for all major computations:
+   // CG solves (H1 and L2) / force RHS assemblies / quadrature computations.
+   StopWatch sw_cgH1, sw_cgL2, sw_force, sw_qdata;
+
+   // These accumulate the total processed dofs or quad points:
+   // #dofs  * #(CG iterations) for the CG solves (H1 and L2).
+   // #dofs  * #(RK sub steps) for the Force application and assembly.
+   // #quads * #(RK sub steps) for the quadrature data computations.
+   long long int H1dof_iter, L2dof_iter, dof_tstep, quad_tstep;
+
+   TimingData()
+      : H1dof_iter(0), L2dof_iter(0), dof_tstep(0), quad_tstep(0) { }
+};
 
 class M1HydroCoefficient;
 
-// Given a solutions state (I0, I1), this class performs all necessary
-// computations to evaluate the new slopes (dI0_dt, dI1_dt).
-class M1Operator : public LagrangianHydroOperator
+// Given a solutions state (f0, f1), this class performs all necessary
+// computations to evaluate the new slopes (df0_dt, df1_dt).
+class M1Operator : public TimeDependentOperator
 {
 protected:
+   ParFiniteElementSpace &H1FESpace;
+   ParFiniteElementSpace &L2FESpace;
+   mutable ParFiniteElementSpace H1compFESpace;
+
+   Array<int> &ess_tdofs;
+
+   const int dim, nzones, l2dofs_cnt, h1dofs_cnt;
+   const double cfl;
+   const bool p_assembly;
+   const double cg_rel_tol;
+   const int cg_max_iter;
+
+   // Velocity mass matrix and local inverses of the energy mass matrices. These
+   // are constant in time, due to the pointwise mass conservation property.
+   mutable ParBilinearForm Mv;
+   DenseTensor Me, Me_inv;
+
+   // Integration rule for all assemblies.
+   const IntegrationRule &integ_rule;
+
+   // Data associated with each quadrature point in the mesh. These values are
+   // recomputed at each time step.
+   mutable QuadratureData quad_data;
+   mutable bool quad_data_is_current;
+
+   // Force matrix that combines the kinematic and thermodynamic spaces. It is
+   // assembled in each time step and then it's used to compute the final
+   // right-hand sides for momentum and specific internal energy.
+   mutable MixedBilinearForm vForce, tForce;
+
+   // Same as above, but done through partial assembly.
+   ForcePAOperator ForcePA;
+
+   // Mass matrices done through partial assembly:
+   // velocity (coupled H1 assembly) and energy (local L2 assemblies).
+   mutable MassPAOperator VMassPA;
+   mutable LocalMassPAOperator locEMassPA;
+
+   // Linear solver for energy.
+   CGSolver locCG;
+
+   mutable TimingData timer;
+
+   void UpdateQuadratureData(double velocity, const Vector &S) const;
+
    // TODO M1_dvmin does not work, because of its local nature. 
    // M1_dvmax does not seem to have an important effect.
    double M1_dvmin, M1_dvmax;
@@ -47,17 +116,12 @@ protected:
    // Velocity dependent coefficients providing physics.
    M1HydroCoefficient *mspInv_pcf, *sourceI0_pcf;
 
-   void UpdateQuadratureData(double velocity, const Vector &S) const;
-
 public:
    M1Operator(int size, ParFiniteElementSpace &h1_fes,
               ParFiniteElementSpace &l2_fes, Array<int> &essential_tdofs,
               ParGridFunction &rho0, double cfl_, M1HydroCoefficient *mspInv_,
               M1HydroCoefficient *sourceI0_, ParGridFunction &x_gf_, 
-              ParGridFunction &T_gf_, bool pa, double cgt, int cgiter)
-      : LagrangianHydroOperator(size, h1_fes, l2_fes, essential_tdofs, rho0,
-                                0, cfl_, NULL, false, pa, cgt, cgiter), 
-         mspInv_pcf(mspInv_), sourceI0_pcf(sourceI0_), x_gf(x_gf_) {}
+              ParGridFunction &T_gf_, bool pa, double cgt, int cgiter);
 
    // Solve for dx_dt, dv_dt and de_dt.
    virtual void Mult(const Vector &S, Vector &dS_dt) const;
@@ -66,6 +130,12 @@ public:
    double GetVelocityStepEstimate(const Vector &S) const;
    void ResetVelocityStepEstimate() const;
    void ResetQuadratureData() const { quad_data_is_current = false; }
+
+   // The density values, which are stored only at some quadrature points, are
+   // projected as a ParGridFunction.
+   void ComputeDensity(ParGridFunction &rho);
+
+   void PrintTimingData(bool IamRoot, int steps);
 
    ~M1Operator() {}
 };
@@ -157,10 +227,10 @@ public:
 
 extern double a0;
 
-} // namespace hydrodynamics
+} // namespace nth
 
 } // namespace mfem
 
 #endif // MFEM_USE_MPI
 
-#endif // MFEM_M1
+#endif // MFEM_M1_SOLVER

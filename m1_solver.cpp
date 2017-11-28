@@ -23,8 +23,185 @@ using namespace std;
 namespace mfem
 {
 
-namespace hydrodynamics
+namespace nth
 {
+
+void VisualizeField(socketstream &sock, const char *vishost, int visport,
+                    ParGridFunction &gf, const char *title,
+                    int x, int y, int w, int h, bool vec)
+{
+   ParMesh &pmesh = *gf.ParFESpace()->GetParMesh();
+   MPI_Comm comm = pmesh.GetComm();
+
+   int num_procs, myid;
+   MPI_Comm_size(comm, &num_procs);
+   MPI_Comm_rank(comm, &myid);
+
+   bool newly_opened = false;
+   int connection_failed;
+
+   do
+   {
+      if (myid == 0)
+      {
+         if (!sock.is_open() || !sock)
+         {
+            sock.open(vishost, visport);
+            sock.precision(8);
+            newly_opened = true;
+         }
+         sock << "solution\n";
+      }
+
+      pmesh.PrintAsOne(sock);
+      gf.SaveAsOne(sock);
+
+      if (myid == 0 && newly_opened)
+      {
+         sock << "window_title '" << title << "'\n"
+              << "window_geometry "
+              << x << " " << y << " " << w << " " << h << "\n"
+              << "keys maaAcl";
+         if ( vec ) { sock << "vvv"; }
+         sock << endl;
+      }
+
+      if (myid == 0)
+      {
+         connection_failed = !sock && !newly_opened;
+      }
+      MPI_Bcast(&connection_failed, 1, MPI_INT, 0, comm);
+   }
+   while (connection_failed);
+}
+
+M1Operator::M1Operator(int size, 
+                       ParFiniteElementSpace &h1_fes,
+                       ParFiniteElementSpace &l2_fes, 
+                       Array<int> &essential_tdofs,
+                       ParGridFunction &rho0, 
+                       double cfl_, 
+                       M1HydroCoefficient *mspInv_,
+                       M1HydroCoefficient *sourceI0_, 
+                       ParGridFunction &x_gf_, 
+                       ParGridFunction &T_gf_, 
+                       bool pa, double cgt, int cgiter)
+   : TimeDependentOperator(size),
+     H1FESpace(h1_fes), L2FESpace(l2_fes),
+     H1compFESpace(h1_fes.GetParMesh(), h1_fes.FEColl(), 1),
+     ess_tdofs(essential_tdofs),
+     dim(h1_fes.GetMesh()->Dimension()),
+     nzones(h1_fes.GetMesh()->GetNE()),
+     l2dofs_cnt(l2_fes.GetFE(0)->GetDof()),
+     h1dofs_cnt(h1_fes.GetFE(0)->GetDof()),
+     cfl(cfl_), p_assembly(pa), cg_rel_tol(cgt), cg_max_iter(cgiter),
+     Mv(&h1_fes), Me(l2dofs_cnt, l2dofs_cnt, nzones),
+     Me_inv(l2dofs_cnt, l2dofs_cnt, nzones),
+     integ_rule(IntRules.Get(h1_fes.GetMesh()->GetElementBaseGeometry(),
+                             3*h1_fes.GetOrder(0) + l2_fes.GetOrder(0) - 1)),
+     quad_data(dim, nzones, integ_rule.GetNPoints()),
+     quad_data_is_current(false),
+     vForce(&l2_fes, &h1_fes), tForce(&l2_fes, &h1_fes),
+     ForcePA(&quad_data, h1_fes, l2_fes),
+     VMassPA(&quad_data, H1compFESpace), locEMassPA(&quad_data, l2_fes),
+     locCG(), timer(), mspInv_pcf(mspInv_), sourceI0_pcf(sourceI0_), x_gf(x_gf_)
+{
+   GridFunctionCoefficient rho_coeff(&rho0);
+
+   // Standard local assembly and inversion for energy mass matrices.
+   DenseMatrix Me_(l2dofs_cnt);
+   DenseMatrixInverse inv(&Me_);
+   MassIntegrator mi(rho_coeff, &integ_rule);
+   for (int i = 0; i < nzones; i++)
+   {
+      mi.AssembleElementMatrix(*l2_fes.GetFE(i),
+                               *l2_fes.GetElementTransformation(i), Me_);
+      Me(i) = Me_;
+      inv.Factor();
+      inv.GetInverseMatrix(Me_inv(i));
+   }
+
+   // Standard assembly for the velocity mass matrix.
+   VectorMassIntegrator *vmi = new VectorMassIntegrator(rho_coeff, &integ_rule);
+   Mv.AddDomainIntegrator(vmi);
+   Mv.Assemble();
+
+   // Values of rho0DetJ0 and Jac0inv at all quadrature points.
+   const int nqp = integ_rule.GetNPoints();
+   Vector rho_vals(nqp);
+   for (int i = 0; i < nzones; i++)
+   {
+      rho0.GetValues(i, integ_rule, rho_vals);
+      ElementTransformation *T = h1_fes.GetElementTransformation(i);
+      for (int q = 0; q < nqp; q++)
+      {
+         const IntegrationPoint &ip = integ_rule.IntPoint(q);
+         T->SetIntPoint(&ip);
+
+         DenseMatrixInverse Jinv(T->Jacobian());
+         Jinv.GetInverseMatrix(quad_data.Jac0inv(i*nqp + q));
+
+         const double rho0DetJ0 = T->Weight() * rho_vals(q);
+         quad_data.rho0DetJ0w(i*nqp + q) = rho0DetJ0 *
+                                           integ_rule.IntPoint(q).weight;
+      }
+   }
+
+   // Initial local mesh size (assumes similar cells).
+   double loc_area = 0.0, glob_area;
+   int loc_z_cnt = nzones, glob_z_cnt;
+   ParMesh *pm = H1FESpace.GetParMesh();
+   for (int i = 0; i < nzones; i++) { loc_area += pm->GetElementVolume(i); }
+   MPI_Allreduce(&loc_area, &glob_area, 1, MPI_DOUBLE, MPI_SUM, pm->GetComm());
+   MPI_Allreduce(&loc_z_cnt, &glob_z_cnt, 1, MPI_INT, MPI_SUM, pm->GetComm());
+   switch (pm->GetElementBaseGeometry(0))
+   {
+      case Geometry::SEGMENT:
+         quad_data.h0 = glob_area / glob_z_cnt; break;
+      case Geometry::SQUARE:
+         quad_data.h0 = sqrt(glob_area / glob_z_cnt); break;
+      case Geometry::TRIANGLE:
+         quad_data.h0 = sqrt(2.0 * glob_area / glob_z_cnt); break;
+      case Geometry::CUBE:
+         quad_data.h0 = pow(glob_area / glob_z_cnt, 1.0/3.0); break;
+      case Geometry::TETRAHEDRON:
+         quad_data.h0 = pow(6.0 * glob_area / glob_z_cnt, 1.0/3.0); break;
+      default: MFEM_ABORT("Unknown zone type!");
+   }
+   quad_data.h0 /= (double) H1FESpace.GetOrder(0);
+
+   vForceIntegrator *vfi = new vForceIntegrator(quad_data);
+   vfi->SetIntRule(&integ_rule);
+   vForce.AddDomainIntegrator(vfi);
+   // Make a dummy assembly to figure out the sparsity.
+   vForce.Assemble(0);
+   vForce.Finalize(0);
+
+   tForceIntegrator *tfi = new tForceIntegrator(quad_data);
+   tfi->SetIntRule(&integ_rule);
+   tForce.AddDomainIntegrator(tfi);
+   // Make a dummy assembly to figure out the sparsity.
+   tForce.Assemble(0);
+   tForce.Finalize(0);
+
+   if (p_assembly)
+   {
+      if (tensors1D == NULL)
+      {
+	     tensors1D = new Tensors1D(H1FESpace.GetFE(0)->GetOrder(),
+                                   L2FESpace.GetFE(0)->GetOrder(),
+                                   int(floor(0.7 + pow(nqp, 1.0 / dim))));
+	  }
+      if (evaluator == NULL) { evaluator = new FastEvaluator(H1FESpace); }
+   }
+
+   locCG.SetOperator(locEMassPA);
+   locCG.iterative_mode = false;
+   locCG.SetRelTol(1e-8);
+   locCG.SetAbsTol(1e-8 * numeric_limits<double>::epsilon());
+   locCG.SetMaxIter(200);
+   locCG.SetPrintLevel(0);
+}
 
 void M1Operator::Mult(const Vector &S, Vector &dS_dt) const
 {
@@ -216,6 +393,71 @@ void M1Operator::ResetVelocityStepEstimate() const
    quad_data.dt_est = numeric_limits<double>::infinity();
 }
 
+void M1Operator::ComputeDensity(ParGridFunction &rho)
+{
+   rho.SetSpace(&L2FESpace);
+
+   DenseMatrix Mrho(l2dofs_cnt);
+   Vector rhs(l2dofs_cnt), rho_z(l2dofs_cnt);
+   Array<int> dofs(l2dofs_cnt);
+   DenseMatrixInverse inv(&Mrho);
+   MassIntegrator mi(&integ_rule);
+   DensityIntegrator di(quad_data);
+   di.SetIntRule(&integ_rule);
+   for (int i = 0; i < nzones; i++)
+   {
+      di.AssembleRHSElementVect(*L2FESpace.GetFE(i),
+                                *L2FESpace.GetElementTransformation(i), rhs);
+      mi.AssembleElementMatrix(*L2FESpace.GetFE(i),
+                               *L2FESpace.GetElementTransformation(i), Mrho);
+      inv.Factor();
+      inv.Mult(rhs, rho_z);
+      L2FESpace.GetElementDofs(i, dofs);
+      rho.SetSubVector(dofs, rho_z);
+   }
+}
+
+void M1Operator::PrintTimingData(bool IamRoot, int steps)
+{
+   double my_rt[5], rt_max[5];
+   my_rt[0] = timer.sw_cgH1.RealTime();
+   my_rt[1] = timer.sw_cgL2.RealTime();
+   my_rt[2] = timer.sw_force.RealTime();
+   my_rt[3] = timer.sw_qdata.RealTime();
+   my_rt[4] = my_rt[0] + my_rt[2] + my_rt[3];
+   MPI_Reduce(my_rt, rt_max, 5, MPI_DOUBLE, MPI_MAX, 0, H1FESpace.GetComm());
+
+   double mydata[2], alldata[2];
+   mydata[0] = timer.L2dof_iter;
+   mydata[1] = timer.quad_tstep;
+   MPI_Reduce(mydata, alldata, 2, MPI_DOUBLE, MPI_SUM, 0, H1FESpace.GetComm());
+
+   if (IamRoot)
+   {
+      using namespace std;
+      cout << endl;
+      cout << "CG (H1) total time: " << rt_max[0] << endl;
+      cout << "CG (H1) rate (megadofs x cg_iterations / second): "
+           << 1e-6 * timer.H1dof_iter / rt_max[0] << endl;
+      cout << endl;
+      cout << "CG (L2) total time: " << rt_max[1] << endl;
+      cout << "CG (L2) rate (megadofs x cg_iterations / second): "
+           << 1e-6 * alldata[0] / rt_max[1] << endl;
+      cout << endl;
+      cout << "Divergences total time: " << rt_max[2] << endl;
+      cout << "Divergences rate (megadofs x timesteps / second): "
+           << 1e-6 * timer.dof_tstep / rt_max[2] << endl;
+      cout << endl;
+      cout << "UpdateQuadData total time: " << rt_max[3] << endl;
+      cout << "UpdateQuadData rate (megaquads x timesteps / second): "
+           << 1e-6 * alldata[1] / rt_max[3] << endl;
+      cout << endl;
+      cout << "Major kernels total time (seconds): " << rt_max[4] << endl;
+      cout << "Major kernels total rate (megadofs x time steps / second): "
+           << 1e-6 * H1FESpace.GlobalTrueVSize() * steps / rt_max[4] << endl;
+   }
+}
+
 void M1Operator::UpdateQuadratureData(double velocity, const Vector &S) const
 {
    if (quad_data_is_current) { return; }
@@ -390,7 +632,8 @@ double M1I0Source::Eval(ElementTransformation &T, const IntegrationPoint &ip)
    //   pow(velocity, 2.0));
 }
 
-} // namespace hydrodynamics
+
+} // namespace nth
 
 } // namespace mfem
 
