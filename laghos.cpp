@@ -305,7 +305,8 @@ int main(int argc, char *argv[])
    e_gf.ProjectGridFunction(l2_e);
 
    // Space-dependent ideal gas coefficient over the Lagrangian mesh.
-   Coefficient *material_pcf = new FunctionCoefficient(hydrodynamics::gamma);
+   FunctionCoefficient gamma_cf = (hydrodynamics::gamma);
+   Coefficient *material_pcf = &gamma_cf;
 
    // Additional details, depending on the problem.
    int source = 0; bool visc;
@@ -719,8 +720,9 @@ int main(int argc, char *argv[])
    // Free the used memory.
    delete ode_solver;
    delete pmesh;
-   delete material_pcf;
+   //delete material_pcf;
    delete tensors1D;
+   delete nth::tensors1D;
    delete m1ode_solver;
 
    return 0;
